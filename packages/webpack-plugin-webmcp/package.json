@@ -1,6 +1,6 @@
 {
   "name": "webpack-plugin-webmcp-nexus",
-  "version": "0.1.6",
+  "version": "0.1.9",
   "description": "Webpack plugin for WebMCP - auto-injects __webmcpSchema at build time",
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
