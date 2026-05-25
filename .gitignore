@@ -24,9 +24,6 @@ dist-ssr
 *.sln
 *.sw?
 
-# pnpm
-pnpm-lock.yaml
-
 # Build outputs
 packages/*/dist
 apps/*/dist
