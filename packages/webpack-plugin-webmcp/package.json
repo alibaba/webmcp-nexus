@@ -1,0 +1,39 @@
+{
+  "name": "webpack-plugin-webmcp-nexus",
+  "version": "0.1.6",
+  "description": "Webpack plugin for WebMCP - auto-injects __webmcpSchema at build time",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./loader": {
+      "types": "./dist/loader.d.ts",
+      "import": "./dist/loader.mjs",
+      "require": "./dist/loader.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "webmcp-nexus-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "webpack": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.2",
+    "tsup": "^8.5.0",
+    "webpack": "^5.98.0"
+  }
+}

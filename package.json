@@ -1,0 +1,37 @@
+{
+  "name": "webmcp-nexus",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm --filter webmcp-nexus-demo dev",
+    "dev:webpack": "pnpm --filter webmcp-nexus-demo dev:webpack",
+    "build": "pnpm -r run build",
+    "build:sdk": "pnpm --filter webmcp-nexus-sdk build",
+    "build:plugin": "pnpm --filter vite-plugin-webmcp-nexus build",
+    "build:demo": "pnpm --filter webmcp-nexus-demo build",
+    "build:webpack-demo": "pnpm --filter webmcp-nexus-demo build:webpack",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "eslint .",
+    "test": "pnpm -r run test",
+    "test:watch": "vitest",
+    "clean": "pnpm -r run clean",
+    "release": "bash scripts/publish.sh"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "eslint": "^9.39.4",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.5.0",
+    "prettier": "^3.8.3",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.58.2",
+    "vitest": "^4.1.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}

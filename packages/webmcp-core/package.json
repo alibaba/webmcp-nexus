@@ -1,0 +1,38 @@
+{
+  "name": "webmcp-nexus-core",
+  "version": "0.1.6",
+  "description": "Core logic for WebMCP build plugins - TypeScript type extraction and JSON Schema generation",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "ts-morph": "^28.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.12.2",
+    "tsup": "^8.5.0",
+    "vitest": "^3.1.3"
+  }
+}
