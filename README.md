@@ -391,7 +391,7 @@ pnpm format         # Prettier
 
 ## 项目状态
 
-WebMCP Nexus 目前处于 **early access** 阶段：核心 API（`registerGlobalTools` / `useWebMcpTools`）与构建插件已在生产应用中验证，但底层 WebMCP 标准本身仍在 W3C 推进中。请密切关注：
+WebMCP Nexus 的核心 API（`registerGlobalTools` / `useWebMcpTools`）与构建插件已在生产应用中稳定运行。底层 WebMCP 标准本身仍在 W3C 推进中，建议同步关注上游进展：
 
 - WebMCP 标准：[webmcp.org](https://webmcp.org)
 - 上游运行时 / Polyfill：[`@mcp-b/webmcp-polyfill`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill)

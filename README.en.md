@@ -391,7 +391,7 @@ pnpm format         # Prettier
 
 ## Status
 
-WebMCP Nexus is currently in **early access**. The core APIs (`registerGlobalTools` / `useWebMcpTools`) and build plugins are validated in production applications, but the underlying WebMCP standard itself is still progressing through W3C. Stay close to:
+WebMCP Nexus's core APIs (`registerGlobalTools` / `useWebMcpTools`) and build plugins are running stably in production applications. The underlying WebMCP standard itself is still progressing through W3C — we recommend tracking the upstream work alongside this project:
 
 - The WebMCP standard: [webmcp.org](https://webmcp.org)
 - Upstream runtime / polyfill: [`@mcp-b/webmcp-polyfill`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill)
