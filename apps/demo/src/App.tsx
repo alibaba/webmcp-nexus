@@ -75,9 +75,10 @@ function Shell() {
 }
 
 export default function App() {
+  const basename = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
   return (
     <TodoStoreProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={basename}>
         <Shell />
       </BrowserRouter>
     </TodoStoreProvider>

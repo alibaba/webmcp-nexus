@@ -14,6 +14,8 @@
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![status](https://img.shields.io/badge/status-early%20access-orange.svg)](#项目状态)
 
+[**🚀 在线体验 Demo →**](https://alibaba.github.io/webmcp-nexus/)
+
 </div>
 
 ---
@@ -200,6 +202,8 @@ export default function TasksPage() {
 ## 示例应用
 
 仓库内 [`apps/demo`](apps/demo) 是一个完整的 Todo / 项目管理应用，演示了所有典型集成模式：全局查询工具、组件级表单工具、路由跳转工具、HMR 调试面板等。
+
+> 🌐 **在线预览**：<https://alibaba.github.io/webmcp-nexus/> （由 GitHub Pages 自动部署，跟随 `main` 分支更新）
 
 ```bash
 pnpm install

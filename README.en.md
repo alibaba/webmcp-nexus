@@ -14,6 +14,8 @@ Turn any React application into a target MCP clients can drive directly — in m
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![status](https://img.shields.io/badge/status-early%20access-orange.svg)](#status)
 
+[**🚀 Try the Live Demo →**](https://alibaba.github.io/webmcp-nexus/)
+
 </div>
 
 ---
@@ -200,6 +202,8 @@ Tools owned by the same scope are deregistered from `modelContext` on unmount, s
 ## Live Demo
 
 [`apps/demo`](apps/demo) is a complete Todo / project-management app that exercises every integration pattern: global query tools, component-level form tools, route-navigation tools, an HMR-aware debug panel, and more.
+
+> 🌐 **Hosted preview**: <https://alibaba.github.io/webmcp-nexus/> (auto-deployed from `main` via GitHub Pages).
 
 ```bash
 pnpm install
