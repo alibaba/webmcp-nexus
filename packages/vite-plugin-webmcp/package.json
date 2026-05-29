@@ -1,6 +1,23 @@
 {
   "name": "vite-plugin-webmcp-nexus",
-  "version": "0.1.9",
+  "version": "0.1.10",
+  "description": "Vite plugin for WebMCP Nexus - auto-generates JSON Schema from TypeScript tool definitions at build time",
+  "license": "MIT",
+  "keywords": [
+    "webmcp",
+    "mcp",
+    "model-context-protocol",
+    "vite",
+    "vite-plugin",
+    "ai-tools",
+    "typescript",
+    "build-plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alibaba/webmcp-nexus.git",
+    "directory": "packages/vite-plugin-webmcp"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

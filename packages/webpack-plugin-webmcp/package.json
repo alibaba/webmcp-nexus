@@ -1,7 +1,23 @@
 {
   "name": "webpack-plugin-webmcp-nexus",
-  "version": "0.1.9",
-  "description": "Webpack plugin for WebMCP - auto-injects __webmcpSchema at build time",
+  "version": "0.1.10",
+  "description": "Webpack plugin for WebMCP Nexus - auto-generates and injects JSON Schema from TypeScript tool definitions at build time",
+  "license": "MIT",
+  "keywords": [
+    "webmcp",
+    "mcp",
+    "model-context-protocol",
+    "webpack",
+    "webpack-plugin",
+    "ai-tools",
+    "typescript",
+    "build-plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alibaba/webmcp-nexus.git",
+    "directory": "packages/webpack-plugin-webmcp"
+  },
   "main": "./dist/index.js",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",

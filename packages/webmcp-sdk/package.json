@@ -1,6 +1,23 @@
 {
   "name": "webmcp-nexus-sdk",
-  "version": "0.1.9",
+  "version": "0.1.10",
+  "description": "SDK for WebMCP Nexus - register and expose browser-side tools for AI agents via Model Context Protocol",
+  "license": "MIT",
+  "keywords": [
+    "webmcp",
+    "mcp",
+    "model-context-protocol",
+    "ai-tools",
+    "sdk",
+    "react",
+    "browser",
+    "ai-agent"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alibaba/webmcp-nexus.git",
+    "directory": "packages/webmcp-sdk"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

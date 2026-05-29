@@ -1,7 +1,24 @@
 {
   "name": "webmcp-nexus-core",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Core logic for WebMCP build plugins - TypeScript type extraction and JSON Schema generation",
+  "license": "MIT",
+  "keywords": [
+    "webmcp",
+    "mcp",
+    "model-context-protocol",
+    "ai-tools",
+    "typescript",
+    "json-schema",
+    "type-extraction",
+    "build-plugin"
+  ],
+  "homepage": "https://github.com/alibaba/webmcp-nexus/tree/main/packages/webmcp-core",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alibaba/webmcp-nexus.git",
+    "directory": "packages/webmcp-core"
+  },
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
