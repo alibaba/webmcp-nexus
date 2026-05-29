@@ -8,6 +8,16 @@ set -euo pipefail
 DRY_RUN="${DRY_RUN:-0}"
 VERSION="${VERSION:-patch}"
 
+# ── npm 登录态校验 ─────────────────────────────────────────────
+if [ "$DRY_RUN" != "1" ]; then
+  echo "Checking npm login status..."
+  if ! npm whoami --registry https://registry.npmjs.org 2>/dev/null; then
+    echo "Error: npm 未登录，请先执行 npm login 登录后再发布"
+    exit 1
+  fi
+  echo "Logged in as: $(npm whoami --registry https://registry.npmjs.org)"
+fi
+
 PACKAGES=(
   "packages/webmcp-core"
   "packages/webmcp-sdk"
