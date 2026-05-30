@@ -265,14 +265,18 @@ input:focus, select:focus, textarea:focus {
 .text-input-overlay {
   position: absolute;
   z-index: 15;
+  box-sizing: border-box;
 }
 .text-input-field {
-  font-size: 16px;
-  padding: 4px 8px;
+  font-size: 14px;
+  padding: 6px 8px;
   border: 2px solid var(--accent);
   border-radius: var(--radius-sm);
   outline: none;
-  min-width: 120px;
+  background: rgba(255, 255, 255, 0.95);
+  font-family: var(--font-body);
+  line-height: 1.4;
+  box-sizing: border-box;
 }
 
 /* ============ Todos Page ============ */

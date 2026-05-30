@@ -118,7 +118,7 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [textInput, setTextInput] = useState<{ x: number; y: number } | null>(null);
+  const [textInput, setTextInput] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
@@ -249,24 +249,24 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
       ctx.beginPath();
       ctx.arc(startPoint.x, startPoint.y, radius, 0, Math.PI * 2);
       ctx.stroke();
-      // 圆心十字标记
-      ctx.save();
-      ctx.setLineDash([3, 3]);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(startPoint.x - 6, startPoint.y);
-      ctx.lineTo(startPoint.x + 6, startPoint.y);
-      ctx.moveTo(startPoint.x, startPoint.y - 6);
-      ctx.lineTo(startPoint.x, startPoint.y + 6);
-      ctx.stroke();
-      ctx.restore();
+    } else if (activeTool === 'text' && startPoint && currentPoints.length > 0) {
+      const end = currentPoints[currentPoints.length - 1];
+      const x = Math.min(startPoint.x, end.x);
+      const y = Math.min(startPoint.y, end.y);
+      const w = Math.abs(end.x - startPoint.x);
+      const h = Math.abs(end.y - startPoint.y);
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#2f6f5e';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(x, y, w, h);
     }
   }, [isDrawing, currentPoints, startPoint, activeTool, activeColor, lineWidth, shapes]);
 
   const handleTextSubmit = useCallback(
     (text: string) => {
       if (textInput && text.trim()) {
-        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x, y: textInput.y, text, fontSize: 16 });
+        const fontSize = Math.min(Math.max(Math.floor(textInput.height * 0.6), 12), 32);
+        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x, y: textInput.y + fontSize + 4, text, fontSize });
       }
       setTextInput(null);
     },
@@ -291,7 +291,9 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
       }
 
       if (activeTool === 'text') {
-        setTextInput(point);
+        setIsDrawing(true);
+        setStartPoint(point);
+        setCurrentPoints([point]);
         return;
       }
 
@@ -332,6 +334,22 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
 
     if (!isDrawing || !startPoint) return;
     setIsDrawing(false);
+
+    if (activeTool === 'text') {
+      const end = currentPoints[currentPoints.length - 1];
+      if (end) {
+        const x = Math.min(startPoint.x, end.x);
+        const y = Math.min(startPoint.y, end.y);
+        const w = Math.abs(end.x - startPoint.x);
+        const h = Math.abs(end.y - startPoint.y);
+        if (w > 10 && h > 10) {
+          setTextInput({ x, y, width: w, height: h });
+        }
+      }
+      setCurrentPoints([]);
+      setStartPoint(null);
+      return;
+    }
 
     if (activeTool === 'freehand') {
       if (currentPoints.length >= 2) {
@@ -381,13 +399,17 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
         onMouseLeave={handleMouseUp}
       />
       {textInput && (
-        <div className="text-input-overlay" style={{ left: textInput.x, top: textInput.y }}>
-          <input
+        <div className="text-input-overlay" style={{ left: textInput.x, top: textInput.y, width: textInput.width, height: textInput.height }}>
+          <textarea
             autoFocus
             className="text-input-field"
             placeholder="输入文字..."
+            style={{ width: '100%', height: '100%', resize: 'none' }}
             onKeyDown={e => {
-              if (e.key === 'Enter') handleTextSubmit((e.target as HTMLInputElement).value);
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handleTextSubmit((e.target as HTMLTextAreaElement).value);
+              }
               if (e.key === 'Escape') setTextInput(null);
             }}
             onBlur={e => handleTextSubmit(e.target.value)}
