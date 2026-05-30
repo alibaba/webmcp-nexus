@@ -1,0 +1,38 @@
+<h2>整体布局设计</h2>
+<p class="subtitle">重构后的应用结构</p>
+
+<div class="mockup">
+  <div class="mockup-header">应用整体布局</div>
+  <div class="mockup-body" style="padding: 0; min-height: 400px; display: flex; flex-direction: column;">
+    <!-- Top bar -->
+    <div style="display: flex; align-items: center; padding: 12px 24px; border-bottom: 1px solid #e5e5e5; background: #fff;">
+      <div style="font-weight: 600; font-size: 16px; margin-right: 32px;">◐ Nexus Demo</div>
+      <div style="display: flex; gap: 4px;">
+        <div style="padding: 6px 16px; border-radius: 6px; background: #2f6f5e; color: white; font-size: 13px; font-weight: 500;">任务</div>
+        <div style="padding: 6px 16px; border-radius: 6px; color: #555; font-size: 13px; font-weight: 500;">画板</div>
+      </div>
+      <div style="margin-left: auto; font-size: 12px; color: #888;">⌘ + \ 调试面板</div>
+    </div>
+    <!-- Content area -->
+    <div style="flex: 1; display: flex;">
+      <!-- Main content -->
+      <div style="flex: 1; padding: 24px; background: #fafaf7;">
+        <div style="color: #888; text-align: center; padding-top: 60px; font-size: 14px;">
+          ← 页面内容区域（任务列表 或 Canvas 画板）→
+        </div>
+      </div>
+      <!-- Debug panel (collapsed indicator) -->
+      <div style="width: 4px; background: #2f6f5e;"></div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>设计要点</h3>
+  <ul>
+    <li><strong>顶部栏：</strong>品牌 Logo + Tab 切换（任务 / 画板）+ 调试面板快捷键提示</li>
+    <li><strong>内容区：</strong>全宽展示，画板页面时画布占满</li>
+    <li><strong>调试面板：</strong>保留现有 DebugPanel，右侧滑出，展示 WebMCP 工具调用日志</li>
+    <li><strong>去掉：</strong>侧边栏、概览页、项目页、标签页</li>
+  </ul>
+</div>

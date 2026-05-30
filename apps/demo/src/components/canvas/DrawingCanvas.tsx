@@ -185,24 +185,9 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
     };
   }, []);
 
-  useEffect(() => {
-    const container = containerRef.current;
-    const canvas = canvasRef.current;
-    if (!container || !canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    const resize = () => {
-      canvas.width = container.clientWidth * dpr;
-      canvas.height = container.clientHeight * dpr;
-      canvas.style.width = container.clientWidth + 'px';
-      canvas.style.height = container.clientHeight + 'px';
-    };
-    const observer = new ResizeObserver(resize);
-    observer.observe(container);
-    resize();
-    return () => observer.disconnect();
-  }, []);
+  const drawShapesRef = useRef<() => void>(() => {});
 
-  useEffect(() => {
+  drawShapesRef.current = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
@@ -262,6 +247,28 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
         ctx.restore();
       }
     }
+  };
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const canvas = canvasRef.current;
+    if (!container || !canvas) return;
+    const dpr = window.devicePixelRatio || 1;
+    const resize = () => {
+      canvas.width = container.clientWidth * dpr;
+      canvas.height = container.clientHeight * dpr;
+      canvas.style.width = container.clientWidth + 'px';
+      canvas.style.height = container.clientHeight + 'px';
+      drawShapesRef.current();
+    };
+    const observer = new ResizeObserver(resize);
+    observer.observe(container);
+    resize();
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    drawShapesRef.current();
   }, [shapes, selectedId, activeTool, dragOffset, isDrawing]);
 
   useEffect(() => {

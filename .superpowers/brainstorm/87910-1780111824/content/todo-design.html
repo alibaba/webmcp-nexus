@@ -1,0 +1,102 @@
+<h2>待办页面设计</h2>
+<p class="subtitle">简化后的任务列表 — 去掉项目/标签，保留核心待办功能</p>
+
+<div class="mockup">
+  <div class="mockup-header">待办页面</div>
+  <div class="mockup-body" style="padding: 0; min-height: 420px; display: flex; flex-direction: column;">
+    <!-- Top bar -->
+    <div style="display: flex; align-items: center; padding: 10px 24px; border-bottom: 1px solid #e5e5e5; background: #fff;">
+      <div style="font-weight: 600; font-size: 16px; margin-right: 32px;">◐ Nexus Demo</div>
+      <div style="display: flex; gap: 4px;">
+        <div style="padding: 6px 16px; border-radius: 6px; color: #555; font-size: 13px; font-weight: 500;">画板</div>
+        <div style="padding: 6px 16px; border-radius: 6px; background: #2f6f5e; color: white; font-size: 13px; font-weight: 500;">待办</div>
+      </div>
+      <div style="margin-left: auto; font-size: 12px; color: #888;">⌘ + \ 调试面板</div>
+    </div>
+
+    <!-- Content -->
+    <div style="flex: 1; padding: 32px 48px; background: #fafaf7; overflow-y: auto;">
+      <!-- Header -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+        <div>
+          <h2 style="margin: 0; font-size: 20px; font-weight: 600;">待办事项</h2>
+          <p style="margin: 4px 0 0; font-size: 13px; color: #888;">共 5 项</p>
+        </div>
+        <div style="padding: 8px 16px; background: #2f6f5e; color: white; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer;">+ 新建</div>
+      </div>
+
+      <!-- Search -->
+      <div style="margin-bottom: 16px;">
+        <div style="padding: 10px 14px; background: white; border: 1px solid #e5e5e5; border-radius: 8px; font-size: 13px; color: #aaa;">搜索待办...</div>
+      </div>
+
+      <!-- Task list -->
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <!-- Task item -->
+        <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border-radius: 10px; border: 1px solid #e5e5e5;">
+          <div style="width: 18px; height: 18px; border: 2px solid #d9d7d2; border-radius: 50%; flex-shrink: 0;"></div>
+          <div style="flex: 1;">
+            <div style="font-size: 14px; font-weight: 500;">完成 Canvas 画板 WebMCP 集成</div>
+            <div style="font-size: 12px; color: #888; margin-top: 2px;">截止 2026-06-05</div>
+          </div>
+          <div style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: #fee2e2; color: #dc2626;">紧急</div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border-radius: 10px; border: 1px solid #e5e5e5;">
+          <div style="width: 18px; height: 18px; border: 2px solid #d9d7d2; border-radius: 50%; flex-shrink: 0;"></div>
+          <div style="flex: 1;">
+            <div style="font-size: 14px; font-weight: 500;">优化移动端响应式布局</div>
+            <div style="font-size: 12px; color: #888; margin-top: 2px;">截止 2026-06-10</div>
+          </div>
+          <div style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: #fef3c7; color: #c2410c;">高</div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: white; border-radius: 10px; border: 1px solid #e5e5e5;">
+          <div style="width: 18px; height: 18px; border: 2px solid #16a34a; border-radius: 50%; flex-shrink: 0; position: relative;">
+            <div style="position: absolute; top: 3px; left: 3px; width: 8px; height: 8px; background: #16a34a; border-radius: 50%;"></div>
+          </div>
+          <div style="flex: 1;">
+            <div style="font-size: 14px; color: #888; text-decoration: line-through;">编写单元测试</div>
+          </div>
+          <div style="padding: 3px 8px; border-radius: 4px; font-size: 11px; background: #dcfce7; color: #16a34a;">已完成</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section" style="margin-top: 24px;">
+  <h3>简化内容</h3>
+  <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+    <thead>
+      <tr style="border-bottom: 2px solid #e5e5e5; text-align: left;">
+        <th style="padding: 8px;">保留</th>
+        <th style="padding: 8px;">删除</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="padding: 8px; vertical-align: top;">
+          <ul style="margin: 0; padding-left: 16px;">
+            <li>标题、描述</li>
+            <li>优先级（紧急/高/中/低）</li>
+            <li>状态（待办/进行中/已完成）</li>
+            <li>截止日期</li>
+            <li>搜索过滤</li>
+            <li>新建/编辑/删除</li>
+          </ul>
+        </td>
+        <td style="padding: 8px; vertical-align: top;">
+          <ul style="margin: 0; padding-left: 16px; color: #888;">
+            <li><s>项目归属 (projectId)</s></li>
+            <li><s>标签系统 (tagIds)</s></li>
+            <li><s>负责人 (assignee)</s></li>
+            <li><s>归档状态</s></li>
+            <li><s>FilterPanel 侧边过滤面板</s></li>
+            <li><s>排序功能</s></li>
+          </ul>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>

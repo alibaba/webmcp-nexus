@@ -1,0 +1,37 @@
+<h2>实现方案对比</h2>
+<p class="subtitle">Canvas 画板的核心架构选择</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>指令式绘制（推荐）</h3>
+      <p><strong>核心思路：</strong>画布维护一个「图形对象列表」，每个图形是一个数据对象（类型 + 坐标 + 样式）。用户操作和 Agent 调用都是往列表里 push 对象，统一重绘。</p>
+      <p><strong>WebMCP 工具：</strong>drawLine / drawRect / drawCircle / drawText / drawFreehand / undo / clear — 每个工具接收坐标参数，返回生成的图形 ID。</p>
+      <p><strong>优势：</strong>状态可序列化、撤销简单（pop 最后一项）、Agent 和用户操作完全统一、易于调试。</p>
+      <p><strong>劣势：</strong>自由画笔需要存大量点坐标，内存稍多。</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Canvas API 直接调用</h3>
+      <p><strong>核心思路：</strong>WebMCP 工具直接封装 Canvas 2D API（moveTo / lineTo / arc 等），Agent 发出的指令立即在画布上渲染，不维护图形列表。</p>
+      <p><strong>WebMCP 工具：</strong>更底层 — beginPath / moveTo / lineTo / stroke / fillRect / arc 等。</p>
+      <p><strong>优势：</strong>实现最简单、Agent 对画布有完全控制力。</p>
+      <p><strong>劣势：</strong>无法撤销（已渲染像素无法回退）、用户手绘和 Agent 绘制的代码路径不统一、调试困难。</p>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>混合方案</h3>
+      <p><strong>核心思路：</strong>用户手绘走 Canvas 直接渲染（流畅），Agent 绘制走图形对象模式。两者共存于同一画布但状态管理不同。</p>
+      <p><strong>WebMCP 工具：</strong>同方案 A 的高级图形 API。</p>
+      <p><strong>优势：</strong>用户手绘体验最流畅。</p>
+      <p><strong>劣势：</strong>两套渲染逻辑、撤销复杂、状态不一致风险。</p>
+    </div>
+  </div>
+</div>

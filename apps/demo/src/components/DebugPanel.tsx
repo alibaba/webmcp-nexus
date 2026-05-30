@@ -94,7 +94,7 @@ async function callTool(name: string, argsJson: string): Promise<string> {
   return String(result);
 }
 
-export default function DebugPanel({ open, onToggle }: Props) {
+export default function DebugPanel({ open }: Props) {
   const [tools, setTools] = useState<ToolInfo[]>([]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [activeScope, setActiveScope] = useState<ScopeGroup>('global');
@@ -334,29 +334,15 @@ export default function DebugPanel({ open, onToggle }: Props) {
   const matchedCount = grouped.global.length + grouped.local.length;
 
   return (
-    <>
-      {!open && (
-        <button
-          type="button"
-          className="debug-fab"
-          onClick={onToggle}
-          aria-label="打开调试面板"
-        >
-          ⌘\
-        </button>
-      )}
-      <aside className={`debug-panel ${open ? 'is-open' : ''}`} aria-hidden={!open}>
-        <header className="debug-panel__head">
-          <div>
-            <h3>WebMCP 工具调试</h3>
-            <p className="muted">
-              当前可用 <strong>{tools.length}</strong> 个工具。
-            </p>
-          </div>
-          <button type="button" className="ghost-btn" onClick={onToggle}>
-            收起
-          </button>
-        </header>
+    <aside className={`debug-panel ${open ? 'is-open' : ''}`} aria-hidden={!open}>
+      <header className="debug-panel__head">
+        <div>
+          <h3>WebMCP 工具调试</h3>
+          <p className="muted">
+            当前可用 <strong>{tools.length}</strong> 个工具。
+          </p>
+        </div>
+      </header>
 
         <div className="debug-panel__search">
           <input
@@ -383,8 +369,7 @@ export default function DebugPanel({ open, onToggle }: Props) {
             </p>
           )}
         </div>
-      </aside>
-    </>
+    </aside>
   );
 }
 
