@@ -274,20 +274,17 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
     }
   }, [isDrawing, currentPoints, startPoint, activeTool, activeColor, lineWidth, shapes]);
 
-  const getTextFontSize = useCallback((area: { height: number }) => {
-    return Math.min(Math.max(Math.floor(area.height * 0.4), 12), 32);
-  }, []);
+  const TEXT_FONT_SIZE = 16;
+  const TEXT_PADDING = 4;
 
   const handleTextSubmit = useCallback(
     (text: string) => {
       if (textInput && text.trim()) {
-        const fontSize = getTextFontSize(textInput);
-        const padding = 6;
-        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x + padding, y: textInput.y + padding, text, fontSize });
+        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x + TEXT_PADDING, y: textInput.y + TEXT_PADDING, text, fontSize: TEXT_FONT_SIZE });
       }
       setTextInput(null);
     },
-    [textInput, activeColor, addShape, getTextFontSize],
+    [textInput, activeColor, addShape],
   );
 
   const handleMouseDown = useCallback(
@@ -425,7 +422,8 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
               width: '100%',
               height: '100%',
               resize: 'none',
-              fontSize: `${getTextFontSize(textInput)}px`,
+              padding: `${TEXT_PADDING}px`,
+              fontSize: `${TEXT_FONT_SIZE}px`,
               lineHeight: 1.4,
               color: activeColor,
               fontFamily: 'Inter, -apple-system, "PingFang SC", system-ui, sans-serif',

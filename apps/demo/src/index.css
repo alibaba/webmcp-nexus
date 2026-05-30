@@ -268,10 +268,9 @@ input:focus, select:focus, textarea:focus {
   box-sizing: border-box;
 }
 .text-input-field {
-  padding: 6px;
-  border: 1.5px solid var(--accent);
+  border: none;
+  outline: 1.5px solid var(--accent);
   border-radius: 2px;
-  outline: none;
   background: rgba(255, 255, 255, 0.92);
   box-sizing: border-box;
 }
