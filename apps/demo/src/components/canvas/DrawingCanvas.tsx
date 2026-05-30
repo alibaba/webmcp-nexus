@@ -48,9 +48,15 @@ function renderShape(ctx: CanvasRenderingContext2D, shape: Shape) {
       break;
     }
     case 'text': {
-      ctx.font = `${shape.fontSize || 16}px Inter, sans-serif`;
+      const fontSize = shape.fontSize || 16;
+      const lineHeight = fontSize * 1.4;
+      ctx.font = `${fontSize}px Inter, -apple-system, "PingFang SC", system-ui, sans-serif`;
       ctx.fillStyle = shape.color;
-      ctx.fillText(shape.text || '', shape.x!, shape.y!);
+      ctx.textBaseline = 'top';
+      const lines = (shape.text || '').split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        ctx.fillText(lines[i], shape.x!, shape.y! + i * lineHeight);
+      }
       break;
     }
   }
@@ -77,9 +83,11 @@ function hitTest(shape: Shape, px: number, py: number): boolean {
     case 'line':
       return distToSegment(px, py, shape.x1!, shape.y1!, shape.x2!, shape.y2!) < HIT_TOLERANCE;
     case 'text': {
-      const w = (shape.text?.length ?? 0) * (shape.fontSize ?? 16) * 0.6;
-      const h = (shape.fontSize ?? 16) * 1.2;
-      return px >= shape.x! && px <= shape.x! + w && py >= shape.y! - h && py <= shape.y!;
+      const lines = (shape.text || '').split('\n');
+      const maxLen = Math.max(...lines.map(l => l.length));
+      const w = maxLen * (shape.fontSize ?? 16) * 0.6;
+      const h = lines.length * (shape.fontSize ?? 16) * 1.4;
+      return px >= shape.x! && px <= shape.x! + w && py >= shape.y! && py <= shape.y! + h;
     }
     case 'freehand': {
       if (!shape.points || shape.points.length < 2) return false;
@@ -183,9 +191,11 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
             );
             break;
           case 'text': {
-            const w = (shape.text?.length ?? 0) * (shape.fontSize ?? 16) * 0.6;
-            const h = (shape.fontSize ?? 16) * 1.2;
-            ctx.strokeRect(shape.x! - 4, shape.y! - h - 4, w + 8, h + 8);
+            const lines = (shape.text || '').split('\n');
+            const maxLen = Math.max(...lines.map(l => l.length));
+            const w = maxLen * (shape.fontSize ?? 16) * 0.6;
+            const h = lines.length * (shape.fontSize ?? 16) * 1.4;
+            ctx.strokeRect(shape.x! - 4, shape.y! - 4, w + 8, h + 8);
             break;
           }
           case 'freehand': {
@@ -255,22 +265,29 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
       const y = Math.min(startPoint.y, end.y);
       const w = Math.abs(end.x - startPoint.x);
       const h = Math.abs(end.y - startPoint.y);
+      ctx.save();
       ctx.setLineDash([4, 4]);
       ctx.strokeStyle = '#2f6f5e';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(x, y, w, h);
+      ctx.restore();
     }
   }, [isDrawing, currentPoints, startPoint, activeTool, activeColor, lineWidth, shapes]);
+
+  const getTextFontSize = useCallback((area: { height: number }) => {
+    return Math.min(Math.max(Math.floor(area.height * 0.4), 12), 32);
+  }, []);
 
   const handleTextSubmit = useCallback(
     (text: string) => {
       if (textInput && text.trim()) {
-        const fontSize = Math.min(Math.max(Math.floor(textInput.height * 0.6), 12), 32);
-        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x, y: textInput.y + fontSize + 4, text, fontSize });
+        const fontSize = getTextFontSize(textInput);
+        const padding = 6;
+        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x + padding, y: textInput.y + padding, text, fontSize });
       }
       setTextInput(null);
     },
-    [textInput, activeColor, addShape],
+    [textInput, activeColor, addShape, getTextFontSize],
   );
 
   const handleMouseDown = useCallback(
@@ -404,7 +421,15 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
             autoFocus
             className="text-input-field"
             placeholder="输入文字..."
-            style={{ width: '100%', height: '100%', resize: 'none' }}
+            style={{
+              width: '100%',
+              height: '100%',
+              resize: 'none',
+              fontSize: `${getTextFontSize(textInput)}px`,
+              lineHeight: 1.4,
+              color: activeColor,
+              fontFamily: 'Inter, -apple-system, "PingFang SC", system-ui, sans-serif',
+            }}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
