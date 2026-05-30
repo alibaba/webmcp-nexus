@@ -1,15 +1,41 @@
-import { NavLink, Route, Routes } from 'react-router-dom';
-import { DebugPanel } from 'webmcp-nexus-sdk';
+import { useCallback, useEffect, useState } from 'react';
+import { BrowserRouter, NavLink, Route, Routes, useNavigate } from 'react-router';
 import { CanvasStoreProvider } from './store/CanvasStore';
 import { TodoStoreProvider } from './store/TodoStore';
+import { publishNavigate } from './tools/navigation-bridge';
 import CanvasPage from './pages/CanvasPage';
 import TodosPage from './pages/TodosPage';
+import DebugPanel from './components/DebugPanel';
 
-export default function App() {
+function NavigateBridge() {
+  const navigate = useNavigate();
+  useEffect(() => {
+    publishNavigate(navigate);
+    return () => publishNavigate(null);
+  }, [navigate]);
+  return null;
+}
+
+function Shell() {
+  const [debugOpen, setDebugOpen] = useState(false);
+  const toggleDebug = useCallback(() => setDebugOpen(v => !v), []);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+        e.preventDefault();
+        toggleDebug();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [toggleDebug]);
+
   return (
     <CanvasStoreProvider>
       <TodoStoreProvider>
         <div className="app">
+          <NavigateBridge />
           <header className="top-nav">
             <div className="top-nav__brand">◐ Nexus Demo</div>
             <nav className="top-nav__tabs">
@@ -28,9 +54,17 @@ export default function App() {
               <Route path="/todos" element={<TodosPage />} />
             </Routes>
           </main>
-          <DebugPanel />
+          <DebugPanel open={debugOpen} onToggle={toggleDebug} />
         </div>
       </TodoStoreProvider>
     </CanvasStoreProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Shell />
+    </BrowserRouter>
   );
 }
