@@ -249,6 +249,17 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
       ctx.beginPath();
       ctx.arc(startPoint.x, startPoint.y, radius, 0, Math.PI * 2);
       ctx.stroke();
+      // 圆心十字标记
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(startPoint.x - 6, startPoint.y);
+      ctx.lineTo(startPoint.x + 6, startPoint.y);
+      ctx.moveTo(startPoint.x, startPoint.y - 6);
+      ctx.lineTo(startPoint.x, startPoint.y + 6);
+      ctx.stroke();
+      ctx.restore();
     }
   }, [isDrawing, currentPoints, startPoint, activeTool, activeColor, lineWidth, shapes]);
 
