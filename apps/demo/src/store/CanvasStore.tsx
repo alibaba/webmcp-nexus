@@ -13,6 +13,7 @@ import type { Shape } from './types';
 export interface CanvasStoreValue {
   shapes: Shape[];
   addShape: (shape: Omit<Shape, 'id'>) => Shape;
+  updateShape: (id: string, patch: Partial<Omit<Shape, 'id' | 'type'>>) => void;
   removeLastShape: () => Shape | null;
   clearShapes: () => number;
   getShapes: () => Shape[];
@@ -33,6 +34,10 @@ export function CanvasStoreProvider({ children }: { children: ReactNode }) {
     const newShape: Shape = { ...shape, id: nextId() };
     setShapes(prev => [...prev, newShape]);
     return newShape;
+  }, []);
+
+  const updateShape = useCallback((id: string, patch: Partial<Omit<Shape, 'id' | 'type'>>) => {
+    setShapes(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   }, []);
 
   const removeLastShape = useCallback((): Shape | null => {
@@ -59,8 +64,8 @@ export function CanvasStoreProvider({ children }: { children: ReactNode }) {
   }, [shapes]);
 
   const value = useMemo<CanvasStoreValue>(
-    () => ({ shapes, addShape, removeLastShape, clearShapes, getShapes }),
-    [shapes, addShape, removeLastShape, clearShapes, getShapes],
+    () => ({ shapes, addShape, updateShape, removeLastShape, clearShapes, getShapes }),
+    [shapes, addShape, updateShape, removeLastShape, clearShapes, getShapes],
   );
 
   useEffect(() => {

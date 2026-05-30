@@ -6,25 +6,10 @@ import Toolbar from '../components/canvas/Toolbar';
 import DrawingCanvas from '../components/canvas/DrawingCanvas';
 
 export default function CanvasPage() {
-  const { addShape, removeLastShape, clearShapes, getShapes } = useCanvasStore();
+  const { addShape, updateShape, removeLastShape, clearShapes, getShapes } = useCanvasStore();
   const [activeTool, setActiveTool] = useState<ShapeType>('freehand');
   const [activeColor, setActiveColor] = useState('#1a1a1a');
   const [lineWidth] = useState(2);
-  const [textInput, setTextInput] = useState<{ x: number; y: number } | null>(null);
-
-  const handleTextInput = useCallback((x: number, y: number) => {
-    setTextInput({ x, y });
-  }, []);
-
-  const handleTextSubmit = useCallback(
-    (text: string) => {
-      if (textInput && text.trim()) {
-        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x, y: textInput.y, text, fontSize: 16 });
-      }
-      setTextInput(null);
-    },
-    [textInput, activeColor, addShape],
-  );
 
   /**
    * [作用域：画板页] 在画布上绘制一条自由线条。
@@ -202,12 +187,49 @@ export default function CanvasPage() {
     return { shapes: getShapes() };
   }, [getShapes]);
 
+  /**
+   * [作用域：画板页] 移动画布上的一个图形。
+   */
+  const moveShape = useCallback(
+    async (params: {
+      /** 图形 ID */
+      id: string;
+      /** X 方向偏移量 */
+      dx: number;
+      /** Y 方向偏移量 */
+      dy: number;
+    }) => {
+      const shape = getShapes().find(s => s.id === params.id);
+      if (!shape) return { success: false, error: 'shape not found' };
+      const patch: Record<string, unknown> = {};
+      switch (shape.type) {
+        case 'freehand':
+          patch.points = shape.points!.map(p => ({ x: p.x + params.dx, y: p.y + params.dy }));
+          break;
+        case 'line':
+          patch.x1 = shape.x1! + params.dx; patch.y1 = shape.y1! + params.dy;
+          patch.x2 = shape.x2! + params.dx; patch.y2 = shape.y2! + params.dy;
+          break;
+        case 'rect': case 'text':
+          patch.x = shape.x! + params.dx; patch.y = shape.y! + params.dy;
+          break;
+        case 'circle':
+          patch.cx = shape.cx! + params.dx; patch.cy = shape.cy! + params.dy;
+          break;
+      }
+      updateShape(params.id, patch);
+      return { success: true };
+    },
+    [getShapes, updateShape],
+  );
+
   useWebMcpTools({
     drawFreehand,
     drawLine,
     drawRect,
     drawCircle,
     drawText,
+    moveShape,
     undo,
     clearCanvas,
     getCanvasShapes,
@@ -227,22 +249,7 @@ export default function CanvasPage() {
         activeTool={activeTool}
         activeColor={activeColor}
         lineWidth={lineWidth}
-        onTextInput={handleTextInput}
       />
-      {textInput && (
-        <div className="text-input-overlay" style={{ left: textInput.x, top: textInput.y }}>
-          <input
-            autoFocus
-            className="text-input-field"
-            placeholder="输入文字..."
-            onKeyDown={e => {
-              if (e.key === 'Enter') handleTextSubmit((e.target as HTMLInputElement).value);
-              if (e.key === 'Escape') setTextInput(null);
-            }}
-            onBlur={e => handleTextSubmit(e.target.value)}
-          />
-        </div>
-      )}
     </section>
   );
 }

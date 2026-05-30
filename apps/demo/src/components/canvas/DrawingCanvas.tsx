@@ -6,7 +6,6 @@ interface Props {
   activeTool: ShapeType;
   activeColor: string;
   lineWidth: number;
-  onTextInput: (x: number, y: number) => void;
 }
 
 function renderShape(ctx: CanvasRenderingContext2D, shape: Shape) {
@@ -57,13 +56,72 @@ function renderShape(ctx: CanvasRenderingContext2D, shape: Shape) {
   }
 }
 
-export default function DrawingCanvas({ activeTool, activeColor, lineWidth, onTextInput }: Props) {
+const HIT_TOLERANCE = 8;
+
+function distToSegment(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return Math.hypot(px - x1, py - y1);
+  let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
+}
+
+function hitTest(shape: Shape, px: number, py: number): boolean {
+  switch (shape.type) {
+    case 'rect':
+      return px >= shape.x! && px <= shape.x! + shape.width! && py >= shape.y! && py <= shape.y! + shape.height!;
+    case 'circle':
+      return Math.hypot(px - shape.cx!, py - shape.cy!) <= shape.radius! + HIT_TOLERANCE;
+    case 'line':
+      return distToSegment(px, py, shape.x1!, shape.y1!, shape.x2!, shape.y2!) < HIT_TOLERANCE;
+    case 'text': {
+      const w = (shape.text?.length ?? 0) * (shape.fontSize ?? 16) * 0.6;
+      const h = (shape.fontSize ?? 16) * 1.2;
+      return px >= shape.x! && px <= shape.x! + w && py >= shape.y! - h && py <= shape.y!;
+    }
+    case 'freehand': {
+      if (!shape.points || shape.points.length < 2) return false;
+      for (let i = 1; i < shape.points.length; i++) {
+        if (distToSegment(px, py, shape.points[i - 1].x, shape.points[i - 1].y, shape.points[i].x, shape.points[i].y) < HIT_TOLERANCE) {
+          return true;
+        }
+      }
+      return false;
+    }
+    default:
+      return false;
+  }
+}
+
+function moveShape(shape: Shape, dx: number, dy: number): Partial<Omit<Shape, 'id' | 'type'>> {
+  switch (shape.type) {
+    case 'freehand':
+      return { points: shape.points!.map(p => ({ x: p.x + dx, y: p.y + dy })) };
+    case 'line':
+      return { x1: shape.x1! + dx, y1: shape.y1! + dy, x2: shape.x2! + dx, y2: shape.y2! + dy };
+    case 'rect':
+    case 'text':
+      return { x: shape.x! + dx, y: shape.y! + dy };
+    case 'circle':
+      return { cx: shape.cx! + dx, cy: shape.cy! + dy };
+    default:
+      return {};
+  }
+}
+
+export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const { shapes, addShape } = useCanvasStore();
+  const { shapes, addShape, updateShape } = useCanvasStore();
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
+  const [textInput, setTextInput] = useState<{ x: number; y: number } | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
 
   const getCanvasPoint = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -94,9 +152,60 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth, onTe
     const ctx = canvas.getContext('2d')!;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     for (const shape of shapes) {
-      renderShape(ctx, shape);
+      const isDragging = shape.id === selectedId && (dragOffset.dx !== 0 || dragOffset.dy !== 0);
+      if (isDragging) {
+        ctx.save();
+        ctx.translate(dragOffset.dx, dragOffset.dy);
+        renderShape(ctx, shape);
+        ctx.restore();
+      } else {
+        renderShape(ctx, shape);
+      }
+      if (shape.id === selectedId && activeTool === 'select') {
+        ctx.save();
+        ctx.strokeStyle = '#2f6f5e';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([4, 4]);
+        if (isDragging) ctx.translate(dragOffset.dx, dragOffset.dy);
+        switch (shape.type) {
+          case 'rect':
+            ctx.strokeRect(shape.x! - 4, shape.y! - 4, shape.width! + 8, shape.height! + 8);
+            break;
+          case 'circle':
+            ctx.beginPath();
+            ctx.arc(shape.cx!, shape.cy!, shape.radius! + 4, 0, Math.PI * 2);
+            ctx.stroke();
+            break;
+          case 'line':
+            ctx.strokeRect(
+              Math.min(shape.x1!, shape.x2!) - 4, Math.min(shape.y1!, shape.y2!) - 4,
+              Math.abs(shape.x2! - shape.x1!) + 8, Math.abs(shape.y2! - shape.y1!) + 8,
+            );
+            break;
+          case 'text': {
+            const w = (shape.text?.length ?? 0) * (shape.fontSize ?? 16) * 0.6;
+            const h = (shape.fontSize ?? 16) * 1.2;
+            ctx.strokeRect(shape.x! - 4, shape.y! - h - 4, w + 8, h + 8);
+            break;
+          }
+          case 'freehand': {
+            if (shape.points && shape.points.length > 0) {
+              let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+              for (const p of shape.points) {
+                if (p.x < minX) minX = p.x;
+                if (p.y < minY) minY = p.y;
+                if (p.x > maxX) maxX = p.x;
+                if (p.y > maxY) maxY = p.y;
+              }
+              ctx.strokeRect(minX - 4, minY - 4, maxX - minX + 8, maxY - minY + 8);
+            }
+            break;
+          }
+        }
+        ctx.restore();
+      }
     }
-  }, [shapes]);
+  }, [shapes, selectedId, activeTool, dragOffset]);
 
   useEffect(() => {
     if (!isDrawing) return;
@@ -143,31 +252,73 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth, onTe
     }
   }, [isDrawing, currentPoints, startPoint, activeTool, activeColor, lineWidth, shapes]);
 
+  const handleTextSubmit = useCallback(
+    (text: string) => {
+      if (textInput && text.trim()) {
+        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x, y: textInput.y, text, fontSize: 16 });
+      }
+      setTextInput(null);
+    },
+    [textInput, activeColor, addShape],
+  );
+
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (activeTool === 'text') {
-        const point = getCanvasPoint(e);
-        onTextInput(point.x, point.y);
+      const point = getCanvasPoint(e);
+
+      if (activeTool === 'select') {
+        for (let i = shapes.length - 1; i >= 0; i--) {
+          if (hitTest(shapes[i], point.x, point.y)) {
+            setSelectedId(shapes[i].id);
+            setDragStart(point);
+            setDragOffset({ dx: 0, dy: 0 });
+            return;
+          }
+        }
+        setSelectedId(null);
         return;
       }
-      const point = getCanvasPoint(e);
+
+      if (activeTool === 'text') {
+        setTextInput(point);
+        return;
+      }
+
       setIsDrawing(true);
       setStartPoint(point);
       setCurrentPoints([point]);
     },
-    [activeTool, getCanvasPoint, onTextInput],
+    [activeTool, getCanvasPoint, shapes],
   );
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      if (!isDrawing) return;
       const point = getCanvasPoint(e);
+
+      if (activeTool === 'select' && dragStart && selectedId) {
+        setDragOffset({ dx: point.x - dragStart.x, dy: point.y - dragStart.y });
+        return;
+      }
+
+      if (!isDrawing) return;
       setCurrentPoints(prev => [...prev, point]);
     },
-    [isDrawing, getCanvasPoint],
+    [activeTool, dragStart, selectedId, isDrawing, getCanvasPoint],
   );
 
   const handleMouseUp = useCallback(() => {
+    if (activeTool === 'select') {
+      if (selectedId && (dragOffset.dx !== 0 || dragOffset.dy !== 0)) {
+        const shape = shapes.find(s => s.id === selectedId);
+        if (shape) {
+          updateShape(selectedId, moveShape(shape, dragOffset.dx, dragOffset.dy));
+        }
+      }
+      setDragStart(null);
+      setDragOffset({ dx: 0, dy: 0 });
+      return;
+    }
+
     if (!isDrawing || !startPoint) return;
     setIsDrawing(false);
 
@@ -205,18 +356,33 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth, onTe
 
     setCurrentPoints([]);
     setStartPoint(null);
-  }, [isDrawing, startPoint, activeTool, activeColor, lineWidth, currentPoints, addShape]);
+  }, [activeTool, selectedId, dragOffset, shapes, updateShape, isDrawing, startPoint, activeColor, lineWidth, currentPoints, addShape]);
 
   return (
     <div ref={containerRef} className="canvas-container">
       <canvas
         ref={canvasRef}
         className="drawing-canvas"
+        style={{ cursor: activeTool === 'select' ? (dragStart ? 'grabbing' : 'default') : 'crosshair' }}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       />
+      {textInput && (
+        <div className="text-input-overlay" style={{ left: textInput.x, top: textInput.y }}>
+          <input
+            autoFocus
+            className="text-input-field"
+            placeholder="输入文字..."
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleTextSubmit((e.target as HTMLInputElement).value);
+              if (e.key === 'Escape') setTextInput(null);
+            }}
+            onBlur={e => handleTextSubmit(e.target.value)}
+          />
+        </div>
+      )}
     </div>
   );
 }

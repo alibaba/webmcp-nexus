@@ -11,6 +11,7 @@ interface Props {
 }
 
 const TOOLS: { type: ShapeType; label: string }[] = [
+  { type: 'select', label: '选择' },
   { type: 'freehand', label: '画笔' },
   { type: 'line', label: '直线' },
   { type: 'rect', label: '矩形' },
@@ -31,6 +32,7 @@ export default function Toolbar({ activeTool, onToolChange, activeColor, onColor
             title={tool.label}
           >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              {tool.type === 'select' && <path d="M4 4l7 18 2.5-7.5L21 12z" fill="currentColor" stroke="none" />}
               {tool.type === 'freehand' && <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" fill="currentColor" stroke="none" />}
               {tool.type === 'line' && <line x1="4" y1="20" x2="20" y2="4" />}
               {tool.type === 'rect' && <rect x="3" y="3" width="18" height="18" rx="2" />}
