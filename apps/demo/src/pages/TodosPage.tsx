@@ -36,7 +36,7 @@ export default function TodosPage() {
    * [作用域：待办页] 列出全部待办（不过滤，可指定数量上限）。
    * @readonly
    */
-  const listTodos = useCallback(
+  const listTodosImpl = useCallback(
     async (params: {
       /** 返回数量上限（默认 200） */
       limit?: number;
@@ -114,7 +114,7 @@ export default function TodosPage() {
   );
 
   useWebMcpTools({
-    listTodos,
+    listTodos: listTodosImpl,
     getTodo,
     searchTodos,
     getTodoStats,

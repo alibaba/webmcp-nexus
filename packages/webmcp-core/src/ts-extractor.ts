@@ -469,15 +469,28 @@ function resolveObjectLiteralArg(
 
     const metadata = extractFunctionMetadata(funcNode, sourceFile);
 
+    // 确定 injectionTarget：必须是运行时作用域中可赋值的表达式
+    let injectionTarget = toolName;
+    if (prop.getKind() === SyntaxKind.PropertyAssignment) {
+      const valueKind = valueNode.getKind();
+      if (
+        valueKind === SyntaxKind.Identifier ||
+        valueKind === SyntaxKind.PropertyAccessExpression
+      ) {
+        injectionTarget = valueNode.getText();
+      } else {
+        // 非简单表达式（inline 函数、类型断言、调用表达式等）无法安全注入，跳过
+        continue;
+      }
+    }
+
     tools.push({
       name: toolName,
       description: metadata.description,
       properties: metadata.properties,
       readOnly: metadata.readOnly,
       sourceFile: relPath,
-      injectionTarget: prop.getKind() === SyntaxKind.PropertyAssignment
-        ? valueNode.getText()
-        : toolName,
+      injectionTarget,
     });
   }
 

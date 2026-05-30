@@ -192,4 +192,48 @@ useWebMcpTools({ createTodo, listTodos: listTodosTool });
     expect(result.code).toContain('listTodosTool.__webmcpSchema');
     expect(result.code).not.toContain('listTodos.__webmcpSchema');
   });
+
+  it('PropertyAssignment with inline arrow function → skips injection (no valid target)', () => {
+    const code = `
+useWebMcpTools({ listTodos: async (params: { limit?: number }) => { return []; } });
+`;
+    const filePath = path.join(tmpDir, 'prop-assign-inline-arrow.tsx');
+    fs.writeFileSync(filePath, code);
+
+    const result = transformCode(code, filePath);
+
+    // inline 箭头函数无法作为赋值目标，应跳过注入
+    expect(result.transformed).toBe(false);
+  });
+
+  it('PropertyAssignment with type assertion → skips injection (no valid target)', () => {
+    const code = `
+/** 工具 */
+function myTool(params: { q: string }) { return []; }
+
+useWebMcpTools({ search: myTool as any });
+`;
+    const filePath = path.join(tmpDir, 'prop-assign-as-expr.tsx');
+    fs.writeFileSync(filePath, code);
+
+    const result = transformCode(code, filePath);
+
+    // 类型断言表达式无法安全注入，应跳过
+    expect(result.transformed).toBe(false);
+  });
+
+  it('PropertyAssignment with call expression → skips injection (no valid target)', () => {
+    const code = `
+function createTool() { return (params: { q: string }) => []; }
+
+useWebMcpTools({ search: createTool() });
+`;
+    const filePath = path.join(tmpDir, 'prop-assign-call-expr.tsx');
+    fs.writeFileSync(filePath, code);
+
+    const result = transformCode(code, filePath);
+
+    // 函数调用返回值无法安全注入，应跳过
+    expect(result.transformed).toBe(false);
+  });
 });
