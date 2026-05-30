@@ -475,7 +475,9 @@ function resolveObjectLiteralArg(
       properties: metadata.properties,
       readOnly: metadata.readOnly,
       sourceFile: relPath,
-      injectionTarget: toolName,
+      injectionTarget: prop.getKind() === SyntaxKind.PropertyAssignment
+        ? valueNode.getText()
+        : toolName,
     });
   }
 
