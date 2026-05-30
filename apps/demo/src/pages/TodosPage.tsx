@@ -1,8 +1,9 @@
 import { useCallback, useState } from 'react';
 import { useWebMcpTools } from 'webmcp-nexus-sdk';
 import { useTodoStore } from '../store/TodoStore';
-import type { TodoStatus } from '../store/types';
+import type { Todo, TodoStatus } from '../store/types';
 import { PRIORITY_LABEL } from '../store/types';
+import TodoFormDialog from '../components/TodoFormDialog';
 
 export default function TodosPage() {
   const {
@@ -19,6 +20,7 @@ export default function TodosPage() {
     getTodoById,
   } = useTodoStore();
   const [search, setSearch] = useState('');
+  const [dialogTodo, setDialogTodo] = useState<Todo | null | undefined>(undefined);
 
   const filteredTodos = filterTodos({ search });
 
@@ -186,7 +188,7 @@ export default function TodosPage() {
           <h2 className="todos-title">待办事项</h2>
           <p className="todos-count">共 {todos.length} 项</p>
         </div>
-        <button type="button" className="todos-add-btn">+ 新建</button>
+        <button type="button" className="todos-add-btn" onClick={() => setDialogTodo(null)}>+ 新建</button>
       </div>
 
       <div className="todos-search">
@@ -207,7 +209,7 @@ export default function TodosPage() {
               className={`todo-card__checkbox ${todo.status === 'done' ? 'is-checked' : ''}`}
               onClick={() => toggleStatus(todo.id, todo.status)}
             />
-            <div className="todo-card__body">
+            <div className="todo-card__body" onClick={() => setDialogTodo(todo)} style={{ cursor: 'pointer' }}>
               <div className="todo-card__title">{todo.title}</div>
               {todo.dueDate && (
                 <div className="todo-card__due">截止 {formatDueDate(todo.dueDate)}</div>
@@ -222,6 +224,9 @@ export default function TodosPage() {
           <div className="todos-empty">暂无待办</div>
         )}
       </div>
+      {dialogTodo !== undefined && (
+        <TodoFormDialog todo={dialogTodo} onClose={() => setDialogTodo(undefined)} />
+      )}
     </section>
   );
 }
