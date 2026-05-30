@@ -120,4 +120,76 @@ useWebMcpTools({ myTool });
     expect(result.transformed).toBe(true);
     expect(result.code).toContain('useWebMcpTools({ myTool })');
   });
+
+  it('PropertyAssignment with Identifier value → injects on value variable', () => {
+    const code = `
+/** 列出待办 */
+function listTodosTool(params: { limit?: number }) {
+  return [];
+}
+
+useWebMcpTools({ listTodos: listTodosTool });
+`;
+    const filePath = path.join(tmpDir, 'prop-assign-identifier.tsx');
+    fs.writeFileSync(filePath, code);
+
+    const result = transformCode(code, filePath);
+
+    expect(result.transformed).toBe(true);
+    expect(result.code).toContain('listTodosTool.__webmcpSchema');
+    expect(result.code).not.toContain('listTodos.__webmcpSchema');
+  });
+
+  it('PropertyAssignment with MemberExpression value → injects on member expression', () => {
+    // 创建源模块文件
+    const moduleContent = `
+/** 搜索用户 */
+export function searchUser(params: { query: string }) {
+  return [];
+}
+`;
+    const modulePath = path.join(tmpDir, 'user-api.ts');
+    fs.writeFileSync(modulePath, moduleContent);
+
+    const code = `
+import * as userApi from './user-api';
+
+useWebMcpTools({ search: userApi.searchUser });
+`;
+    const filePath = path.join(tmpDir, 'prop-assign-member.tsx');
+    fs.writeFileSync(filePath, code);
+
+    const result = transformCode(code, filePath);
+
+    expect(result.transformed).toBe(true);
+    expect(result.code).toContain('userApi.searchUser.__webmcpSchema');
+    expect(result.code).not.toContain('search.__webmcpSchema');
+  });
+
+  it('Mixed shorthand + PropertyAssignment → each injects on correct target', () => {
+    const code = `
+/** 创建待办 */
+function createTodo(params: { title: string }) {
+  return { id: '1', title: params.title };
+}
+
+/** 列出待办 */
+function listTodosTool(params: { limit?: number }) {
+  return [];
+}
+
+useWebMcpTools({ createTodo, listTodos: listTodosTool });
+`;
+    const filePath = path.join(tmpDir, 'prop-assign-mixed.tsx');
+    fs.writeFileSync(filePath, code);
+
+    const result = transformCode(code, filePath);
+
+    expect(result.transformed).toBe(true);
+    // shorthand: key = variable name
+    expect(result.code).toContain('createTodo.__webmcpSchema');
+    // non-shorthand: value expression
+    expect(result.code).toContain('listTodosTool.__webmcpSchema');
+    expect(result.code).not.toContain('listTodos.__webmcpSchema');
+  });
 });
