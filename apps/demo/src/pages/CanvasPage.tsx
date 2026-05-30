@@ -6,7 +6,7 @@ import Toolbar from '../components/canvas/Toolbar';
 import DrawingCanvas from '../components/canvas/DrawingCanvas';
 
 export default function CanvasPage() {
-  const { addShape, updateShape, removeLastShape, clearShapes, getShapes } = useCanvasStore();
+  const { addShape, updateShape, removeShape, removeLastShape, clearShapes, getShapes } = useCanvasStore();
   const [activeTool, setActiveTool] = useState<ShapeType>('freehand');
   const [activeColor, setActiveColor] = useState('#1a1a1a');
   const [lineWidth] = useState(2);
@@ -203,6 +203,81 @@ export default function CanvasPage() {
   );
 
   /**
+   * [作用域：画板页] 删除画布上指定 ID 的图形。
+   */
+  const deleteShape = useCallback(
+    async (params: {
+      /** 要删除的图形 ID */
+      id: string;
+    }) => {
+      const removed = removeShape(params.id);
+      return { success: !!removed, removedId: removed?.id ?? null };
+    },
+    [removeShape],
+  );
+
+  /**
+   * [作用域：画板页] 修改画布上指定图形的样式（颜色、线宽、填充、字号）。
+   */
+  const updateShapeStyle = useCallback(
+    async (params: {
+      /** 图形 ID */
+      id: string;
+      /** 描边/文字颜色 */
+      color?: string;
+      /** 线宽 */
+      lineWidth?: number;
+      /** 填充颜色（传 null 清除填充） */
+      fill?: string | null;
+      /** 字号（仅对 text 类型有效） */
+      fontSize?: number;
+    }) => {
+      const shape = getShapes().find(s => s.id === params.id);
+      if (!shape) return { success: false, error: 'shape not found' };
+      const patch: Record<string, unknown> = {};
+      if (params.color !== undefined) patch.color = params.color;
+      if (params.lineWidth !== undefined) patch.lineWidth = params.lineWidth;
+      if (params.fill !== undefined) patch.fill = params.fill;
+      if (params.fontSize !== undefined && shape.type === 'text') patch.fontSize = params.fontSize;
+      updateShape(params.id, patch);
+      return { success: true };
+    },
+    [getShapes, updateShape],
+  );
+
+  /**
+   * [作用域：画板页] 修改画布上已有文字图形的文本内容。
+   */
+  const updateText = useCallback(
+    async (params: {
+      /** 文字图形 ID */
+      id: string;
+      /** 新文本内容 */
+      text: string;
+    }) => {
+      const shape = getShapes().find(s => s.id === params.id);
+      if (!shape) return { success: false, error: 'shape not found' };
+      if (shape.type !== 'text') return { success: false, error: 'shape is not a text element' };
+      updateShape(params.id, { text: params.text });
+      return { success: true };
+    },
+    [getShapes, updateShape],
+  );
+
+  /**
+   * [作用域：画板页] 获取当前画布的像素尺寸（宽×高），Agent 可据此计算合理坐标。
+   * @readonly
+   */
+  const getCanvasSize = useCallback(
+    async (_params: Record<string, never>) => {
+      const container = document.querySelector('.canvas-container');
+      if (!container) return { width: 0, height: 0 };
+      return { width: container.clientWidth, height: container.clientHeight };
+    },
+    [],
+  );
+
+  /**
    * [作用域：画板页] 移动画布上的一个图形。
    */
   const moveShape = useCallback(
@@ -240,15 +315,19 @@ export default function CanvasPage() {
 
   useWebMcpTools({
     getCanvasInfo,
+    getCanvasSize,
+    getCanvasShapes,
     drawFreehand,
     drawLine,
     drawRect,
     drawCircle,
     drawText,
     moveShape,
+    deleteShape,
+    updateShapeStyle,
+    updateText,
     undo,
     clearCanvas,
-    getCanvasShapes,
   });
 
   return (

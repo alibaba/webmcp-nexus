@@ -13,6 +13,7 @@ export interface CanvasStoreValue {
   shapes: Shape[];
   addShape: (shape: Omit<Shape, 'id'>) => Shape;
   updateShape: (id: string, patch: Partial<Omit<Shape, 'id' | 'type'>>) => void;
+  removeShape: (id: string) => Shape | null;
   removeLastShape: () => Shape | null;
   clearShapes: () => number;
   getShapes: () => Shape[];
@@ -39,6 +40,17 @@ export function CanvasStoreProvider({ children }: { children: ReactNode }) {
     setShapes(prev => prev.map(s => s.id === id ? { ...s, ...patch } : s));
   }, []);
 
+  const removeShape = useCallback((id: string): Shape | null => {
+    let removed: Shape | null = null;
+    setShapes(prev => {
+      const idx = prev.findIndex(s => s.id === id);
+      if (idx === -1) return prev;
+      removed = prev[idx];
+      return [...prev.slice(0, idx), ...prev.slice(idx + 1)];
+    });
+    return removed;
+  }, []);
+
   const removeLastShape = useCallback((): Shape | null => {
     let removed: Shape | null = null;
     setShapes(prev => {
@@ -63,8 +75,8 @@ export function CanvasStoreProvider({ children }: { children: ReactNode }) {
   }, [shapes]);
 
   const value = useMemo<CanvasStoreValue>(
-    () => ({ shapes, addShape, updateShape, removeLastShape, clearShapes, getShapes }),
-    [shapes, addShape, updateShape, removeLastShape, clearShapes, getShapes],
+    () => ({ shapes, addShape, updateShape, removeShape, removeLastShape, clearShapes, getShapes }),
+    [shapes, addShape, updateShape, removeShape, removeLastShape, clearShapes, getShapes],
   );
 
   return (
