@@ -188,6 +188,21 @@ export default function CanvasPage() {
   }, [getShapes]);
 
   /**
+   * [作用域：画板页] 获取当前画布尺寸信息和图形数量（用于 Agent 了解画布状态）。
+   * @readonly
+   */
+  const getCanvasInfo = useCallback(
+    async (_params: Record<string, never>) => {
+      const allShapes = getShapes();
+      return {
+        shapeCount: allShapes.length,
+        shapes: allShapes.map(s => ({ id: s.id, type: s.type })),
+      };
+    },
+    [getShapes],
+  );
+
+  /**
    * [作用域：画板页] 移动画布上的一个图形。
    */
   const moveShape = useCallback(
@@ -224,6 +239,7 @@ export default function CanvasPage() {
   );
 
   useWebMcpTools({
+    getCanvasInfo,
     drawFreehand,
     drawLine,
     drawRect,

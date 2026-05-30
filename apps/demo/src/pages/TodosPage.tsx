@@ -33,147 +33,99 @@ export default function TodosPage() {
   );
 
   /**
-   * [作用域：待办页] 创建一条新待办。
+   * [作用域：待办页] 列出全部待办（不过滤，可指定数量上限）。
+   * @readonly
    */
-  const createTodoTool = useCallback(
+  const listTodos = useCallback(
     async (params: {
-      /** 待办标题 */
-      title: string;
-      /** 待办描述 */
-      description?: string;
-      /** 优先级 */
-      priority?: 'low' | 'medium' | 'high' | 'urgent';
-      /** 截止时间 YYYY-MM-DDTHH:mm */
-      dueDate?: string;
+      /** 返回数量上限（默认 200） */
+      limit?: number;
     }) => {
-      return createTodo(params);
+      const limit = params.limit ?? 200;
+      return { count: todos.length, todos: todos.slice(0, limit) };
     },
-    [createTodo],
+    [todos],
   );
 
   /**
-   * [作用域：待办页] 更新一条待办的字段。
+   * [作用域：待办页] 根据 ID 读取单条待办详情。
+   * @readonly
    */
-  const updateTodoTool = useCallback(
-    async (params: {
-      /** 待办 ID */
-      id: string;
-      /** 新标题 */
-      title?: string;
-      /** 新描述 */
-      description?: string;
-      /** 新优先级 */
-      priority?: 'low' | 'medium' | 'high' | 'urgent';
-      /** 新状态 */
-      status?: 'todo' | 'in_progress' | 'done';
-      /** 新截止时间 YYYY-MM-DDTHH:mm，传 null 清除 */
-      dueDate?: string | null;
-    }) => {
-      return updateTodo(params);
-    },
-    [updateTodo],
-  );
-
-  /**
-   * [作用域：待办页] 删除一条待办。
-   */
-  const deleteTodoTool = useCallback(
+  const getTodo = useCallback(
     async (params: { /** 待办 ID */ id: string }) => {
-      return { success: deleteTodo(params) };
+      return { todo: getTodoById(params) };
     },
-    [deleteTodo],
+    [getTodoById],
   );
 
   /**
-   * [作用域：待办页] 批量删除待办。
-   */
-  const deleteTodosTool = useCallback(
-    async (params: { /** 待办 ID 列表 */ ids: string[] }) => {
-      return deleteTodos(params);
-    },
-    [deleteTodos],
-  );
-
-  /**
-   * [作用域：待办页] 设置待办状态。
-   */
-  const setTodoStatusTool = useCallback(
-    async (params: { /** 待办 ID */ id: string; /** 新状态 */ status: 'todo' | 'in_progress' | 'done' }) => {
-      return setTodoStatus(params);
-    },
-    [setTodoStatus],
-  );
-
-  /**
-   * [作用域：待办页] 批量设置待办状态。
-   */
-  const bulkSetTodoStatusTool = useCallback(
-    async (params: { /** 待办 ID 列表 */ ids: string[]; /** 新状态 */ status: 'todo' | 'in_progress' | 'done' }) => {
-      return bulkSetTodoStatus(params);
-    },
-    [bulkSetTodoStatus],
-  );
-
-  /**
-   * [作用域：待办页] 设置待办优先级。
-   */
-  const setTodoPriorityTool = useCallback(
-    async (params: { /** 待办 ID */ id: string; /** 新优先级 */ priority: 'low' | 'medium' | 'high' | 'urgent' }) => {
-      return setTodoPriority(params);
-    },
-    [setTodoPriority],
-  );
-
-  /**
-   * [作用域：待办页] 设置待办截止时间。
-   */
-  const setTodoDueDateTool = useCallback(
-    async (params: { /** 待办 ID */ id: string; /** 截止时间 YYYY-MM-DDTHH:mm 或 null */ dueDate: string | null }) => {
-      return setTodoDueDate(params);
-    },
-    [setTodoDueDate],
-  );
-
-  /**
-   * [作用域：待办页] 搜索过滤待办列表。
+   * [作用域：待办页] 搜索待办（关键词匹配标题与描述，可叠加优先级/状态过滤）。
    * @readonly
    */
   const searchTodos = useCallback(
     async (params: {
-      /** 搜索关键词 */
-      search?: string;
+      /** 关键词（匹配标题与描述） */
+      query?: string;
       /** 优先级过滤 */
       priorities?: ('low' | 'medium' | 'high' | 'urgent')[];
       /** 状态过滤 */
       statuses?: ('todo' | 'in_progress' | 'done')[];
+      /** 返回数量上限（默认 50） */
+      limit?: number;
     }) => {
-      return { todos: filterTodos(params) };
+      const results = filterTodos({
+        search: params.query,
+        priorities: params.priorities,
+        statuses: params.statuses,
+      });
+      const limit = params.limit ?? 50;
+      return {
+        count: results.length,
+        results: results.slice(0, limit).map(t => ({
+          id: t.id,
+          title: t.title,
+          status: t.status,
+          priority: t.priority,
+          dueDate: t.dueDate,
+        })),
+      };
     },
     [filterTodos],
   );
 
   /**
-   * [作用域：待办页] 获取单条待办详情。
+   * [作用域：待办页] 读取待办统计（总数/各状态数/逾期数）。
    * @readonly
    */
-  const getTodoByIdTool = useCallback(
-    async (params: { /** 待办 ID */ id: string }) => {
-      return getTodoById(params);
+  const getTodoStats = useCallback(
+    async (_params: Record<string, never>) => {
+      const today = new Date().toISOString().slice(0, 16);
+      return {
+        total: todos.length,
+        todo: todos.filter(t => t.status === 'todo').length,
+        in_progress: todos.filter(t => t.status === 'in_progress').length,
+        done: todos.filter(t => t.status === 'done').length,
+        overdue: todos.filter(
+          t => t.dueDate && t.dueDate < today && t.status !== 'done',
+        ).length,
+      };
     },
-    [getTodoById],
+    [todos],
   );
 
   useWebMcpTools({
-    createTodo: createTodoTool,
-    updateTodo: updateTodoTool,
-    deleteTodo: deleteTodoTool,
-    deleteTodos: deleteTodosTool,
-    setTodoStatus: setTodoStatusTool,
-    bulkSetTodoStatus: bulkSetTodoStatusTool,
-    setTodoPriority: setTodoPriorityTool,
-    setTodoDueDate: setTodoDueDateTool,
+    listTodos,
+    getTodo,
     searchTodos,
-    getTodoById: getTodoByIdTool,
+    getTodoStats,
+    createTodo,
+    updateTodo,
+    deleteTodo,
+    deleteTodos,
+    setTodoStatus,
+    bulkSetTodoStatus,
+    setTodoPriority,
+    setTodoDueDate,
   });
 
   const formatDueDate = (d: string | null) => {

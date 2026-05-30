@@ -2,7 +2,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -93,15 +92,25 @@ export interface FilterTodosInput {
 
 export interface TodoStoreValue {
   todos: Todo[];
+  /** [作用域：待办页] 创建一条新待办。 */
   createTodo: (input: CreateTodoInput) => Todo;
+  /** [作用域：待办页] 更新一条待办的字段。 */
   updateTodo: (input: UpdateTodoInput) => Todo | null;
+  /** [作用域：待办页] 删除一条待办。 */
   deleteTodo: (input: DeleteTodoInput) => boolean;
+  /** [作用域：待办页] 批量删除待办。 */
   deleteTodos: (input: DeleteTodosInput) => { deleted: number };
+  /** [作用域：待办页] 设置待办状态。 */
   setTodoStatus: (input: SetTodoStatusInput) => Todo | null;
+  /** [作用域：待办页] 批量设置待办状态。 */
   bulkSetTodoStatus: (input: BulkSetTodoStatusInput) => { updated: number };
+  /** [作用域：待办页] 设置待办优先级。 */
   setTodoPriority: (input: SetTodoPriorityInput) => Todo | null;
+  /** [作用域：待办页] 设置待办截止时间。 */
   setTodoDueDate: (input: SetTodoDueDateInput) => Todo | null;
+  /** [作用域：待办页] 搜索过滤待办。 @readonly */
   filterTodos: (input: FilterTodosInput) => Todo[];
+  /** [作用域：待办页] 获取单条待办详情。 @readonly */
   getTodoById: (input: GetTodoByIdInput) => Todo | null;
 }
 
@@ -267,13 +276,6 @@ export function TodoStoreProvider({ children, seed }: ProviderProps) {
     ],
   );
 
-  useEffect(() => {
-    __publishStoreRef(value);
-    return () => {
-      __publishStoreRef(null);
-    };
-  }, [value]);
-
   return <TodoStoreContext.Provider value={value}>{children}</TodoStoreContext.Provider>;
 }
 
@@ -283,17 +285,4 @@ export function useTodoStore(): TodoStoreValue {
     throw new Error('useTodoStore must be used within TodoStoreProvider');
   }
   return value;
-}
-
-let storeRef: TodoStoreValue | null = null;
-
-export function __publishStoreRef(value: TodoStoreValue | null): void {
-  storeRef = value;
-}
-
-export function getStoreRef(): TodoStoreValue {
-  if (!storeRef) {
-    throw new Error('TodoStore is not yet initialized');
-  }
-  return storeRef;
 }

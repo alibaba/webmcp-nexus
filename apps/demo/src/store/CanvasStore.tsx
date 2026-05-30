@@ -2,7 +2,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -68,11 +67,6 @@ export function CanvasStoreProvider({ children }: { children: ReactNode }) {
     [shapes, addShape, updateShape, removeLastShape, clearShapes, getShapes],
   );
 
-  useEffect(() => {
-    __publishCanvasRef(value);
-    return () => { __publishCanvasRef(null); };
-  }, [value]);
-
   return (
     <CanvasStoreContext.Provider value={value}>
       {children}
@@ -84,15 +78,4 @@ export function useCanvasStore(): CanvasStoreValue {
   const value = useContext(CanvasStoreContext);
   if (!value) throw new Error('useCanvasStore must be used within <CanvasStoreProvider>');
   return value;
-}
-
-let canvasRef: CanvasStoreValue | null = null;
-
-export function __publishCanvasRef(value: CanvasStoreValue | null): void {
-  canvasRef = value;
-}
-
-export function getCanvasRef(): CanvasStoreValue {
-  if (!canvasRef) throw new Error('CanvasStore is not yet initialized');
-  return canvasRef;
 }
