@@ -2,6 +2,52 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCanvasStore } from '../../store/CanvasStore';
 import type { Shape, ShapeType } from '../../store/types';
 
+let _measureCtx: CanvasRenderingContext2D | null = null;
+function getMeasureCtx(): CanvasRenderingContext2D {
+  if (!_measureCtx) {
+    _measureCtx = document.createElement('canvas').getContext('2d')!;
+  }
+  return _measureCtx;
+}
+
+const TEXT_FONT = 'Inter, -apple-system, "PingFang SC", system-ui, sans-serif';
+
+function getTextLines(text: string, fontSize: number, maxWidth?: number): string[] {
+  const ctx = getMeasureCtx();
+  ctx.font = `${fontSize}px ${TEXT_FONT}`;
+  const paragraphs = (text || '').split('\n');
+  if (!maxWidth) return paragraphs;
+  const lines: string[] = [];
+  for (const para of paragraphs) {
+    if (!para) { lines.push(''); continue; }
+    let currentLine = '';
+    for (const char of para) {
+      const testLine = currentLine + char;
+      if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+        lines.push(currentLine);
+        currentLine = char;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    lines.push(currentLine);
+  }
+  return lines;
+}
+
+function getTextBounds(shape: Shape): { w: number; h: number } {
+  const fontSize = shape.fontSize ?? 16;
+  const lines = getTextLines(shape.text || '', fontSize, shape.width);
+  const ctx = getMeasureCtx();
+  ctx.font = `${fontSize}px ${TEXT_FONT}`;
+  let maxW = 0;
+  for (const line of lines) {
+    const m = ctx.measureText(line).width;
+    if (m > maxW) maxW = m;
+  }
+  return { w: maxW, h: lines.length * fontSize * 1.4 };
+}
+
 interface Props {
   activeTool: ShapeType;
   activeColor: string;
@@ -50,12 +96,13 @@ function renderShape(ctx: CanvasRenderingContext2D, shape: Shape) {
     case 'text': {
       const fontSize = shape.fontSize || 16;
       const lineHeight = fontSize * 1.4;
-      ctx.font = `${fontSize}px Inter, -apple-system, "PingFang SC", system-ui, sans-serif`;
+      const halfLeading = (lineHeight - fontSize) / 2;
+      ctx.font = `${fontSize}px ${TEXT_FONT}`;
       ctx.fillStyle = shape.color;
       ctx.textBaseline = 'top';
-      const lines = (shape.text || '').split('\n');
+      const lines = getTextLines(shape.text || '', fontSize, shape.width);
       for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i], shape.x!, shape.y! + i * lineHeight);
+        ctx.fillText(lines[i], shape.x!, shape.y! + halfLeading + i * lineHeight);
       }
       break;
     }
@@ -83,10 +130,7 @@ function hitTest(shape: Shape, px: number, py: number): boolean {
     case 'line':
       return distToSegment(px, py, shape.x1!, shape.y1!, shape.x2!, shape.y2!) < HIT_TOLERANCE;
     case 'text': {
-      const lines = (shape.text || '').split('\n');
-      const maxLen = Math.max(...lines.map(l => l.length));
-      const w = maxLen * (shape.fontSize ?? 16) * 0.6;
-      const h = lines.length * (shape.fontSize ?? 16) * 1.4;
+      const { w, h } = getTextBounds(shape);
       return px >= shape.x! && px <= shape.x! + w && py >= shape.y! && py <= shape.y! + h;
     }
     case 'freehand': {
@@ -126,10 +170,11 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [textInput, setTextInput] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [textInput, setTextInput] = useState<{ x: number; y: number; width: number; height: number; editingId?: string; initialText?: string } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const getCanvasPoint = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -144,13 +189,16 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
     const container = containerRef.current;
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
-    const observer = new ResizeObserver(() => {
-      canvas.width = container.clientWidth;
-      canvas.height = container.clientHeight;
-    });
+    const dpr = window.devicePixelRatio || 1;
+    const resize = () => {
+      canvas.width = container.clientWidth * dpr;
+      canvas.height = container.clientHeight * dpr;
+      canvas.style.width = container.clientWidth + 'px';
+      canvas.style.height = container.clientHeight + 'px';
+    };
+    const observer = new ResizeObserver(resize);
     observer.observe(container);
-    canvas.width = container.clientWidth;
-    canvas.height = container.clientHeight;
+    resize();
     return () => observer.disconnect();
   }, []);
 
@@ -158,7 +206,9 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
     for (const shape of shapes) {
       const isDragging = shape.id === selectedId && (dragOffset.dx !== 0 || dragOffset.dy !== 0);
       if (isDragging) {
@@ -191,10 +241,7 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
             );
             break;
           case 'text': {
-            const lines = (shape.text || '').split('\n');
-            const maxLen = Math.max(...lines.map(l => l.length));
-            const w = maxLen * (shape.fontSize ?? 16) * 0.6;
-            const h = lines.length * (shape.fontSize ?? 16) * 1.4;
+            const { w, h } = getTextBounds(shape);
             ctx.strokeRect(shape.x! - 4, shape.y! - 4, w + 8, h + 8);
             break;
           }
@@ -215,14 +262,16 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
         ctx.restore();
       }
     }
-  }, [shapes, selectedId, activeTool, dragOffset]);
+  }, [shapes, selectedId, activeTool, dragOffset, isDrawing]);
 
   useEffect(() => {
     if (!isDrawing) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const dpr = window.devicePixelRatio || 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
     for (const shape of shapes) {
       renderShape(ctx, shape);
     }
@@ -275,17 +324,30 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
   }, [isDrawing, currentPoints, startPoint, activeTool, activeColor, lineWidth, shapes]);
 
   const TEXT_FONT_SIZE = 16;
-  const TEXT_PADDING = 4;
 
   const handleTextSubmit = useCallback(
     (text: string) => {
-      if (textInput && text.trim()) {
-        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x + TEXT_PADDING, y: textInput.y + TEXT_PADDING, text, fontSize: TEXT_FONT_SIZE });
+      if (!textInput) return;
+      if (textInput.editingId) {
+        if (text.trim()) {
+          updateShape(textInput.editingId, { text, width: textInput.width, height: textInput.height });
+        }
+      } else if (text.trim()) {
+        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x, y: textInput.y, width: textInput.width, height: textInput.height, text, fontSize: TEXT_FONT_SIZE });
       }
       setTextInput(null);
     },
-    [textInput, activeColor, addShape],
+    [textInput, activeColor, addShape, updateShape],
   );
+
+  const handleTextareaInput = useCallback(() => {
+    const ta = textareaRef.current;
+    if (!ta || !textInput) return;
+    if (ta.scrollHeight > ta.clientHeight) {
+      const newHeight = ta.scrollHeight;
+      setTextInput(prev => prev ? { ...prev, height: newHeight } : prev);
+    }
+  }, [textInput]);
 
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -401,6 +463,29 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
     setStartPoint(null);
   }, [activeTool, selectedId, dragOffset, shapes, updateShape, isDrawing, startPoint, activeColor, lineWidth, currentPoints, addShape]);
 
+  const handleDoubleClick = useCallback(
+    (e: React.MouseEvent<HTMLCanvasElement>) => {
+      const point = getCanvasPoint(e);
+      for (let i = shapes.length - 1; i >= 0; i--) {
+        const shape = shapes[i];
+        if (shape.type === 'text' && hitTest(shape, point.x, point.y)) {
+          const { h } = getTextBounds(shape);
+          setTextInput({
+            x: shape.x!,
+            y: shape.y!,
+            width: shape.width || 200,
+            height: Math.max(shape.height || h, h),
+            editingId: shape.id,
+            initialText: shape.text || '',
+          });
+          setSelectedId(null);
+          return;
+        }
+      }
+    },
+    [getCanvasPoint, shapes],
+  );
+
   return (
     <div ref={containerRef} className="canvas-container">
       <canvas
@@ -411,23 +496,27 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onDoubleClick={handleDoubleClick}
       />
       {textInput && (
         <div className="text-input-overlay" style={{ left: textInput.x, top: textInput.y, width: textInput.width, height: textInput.height }}>
           <textarea
+            ref={textareaRef}
             autoFocus
             className="text-input-field"
+            defaultValue={textInput.initialText || ''}
             placeholder="输入文字..."
             style={{
               width: '100%',
               height: '100%',
               resize: 'none',
-              padding: `${TEXT_PADDING}px`,
+              padding: 0,
               fontSize: `${TEXT_FONT_SIZE}px`,
               lineHeight: 1.4,
               color: activeColor,
-              fontFamily: 'Inter, -apple-system, "PingFang SC", system-ui, sans-serif',
+              fontFamily: `${TEXT_FONT}`,
             }}
+            onInput={handleTextareaInput}
             onKeyDown={e => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();

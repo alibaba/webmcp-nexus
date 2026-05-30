@@ -267,12 +267,19 @@ input:focus, select:focus, textarea:focus {
   z-index: 15;
   box-sizing: border-box;
 }
-.text-input-field {
+.text-input-field,
+.text-input-field:focus {
   border: none;
-  outline: 1.5px solid var(--accent);
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.92);
   box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* ============ Todos Page ============ */
