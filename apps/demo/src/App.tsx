@@ -2,9 +2,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { BrowserRouter, NavLink, Route, Routes, useNavigate } from 'react-router';
 import { CanvasStoreProvider } from './store/CanvasStore';
 import { TodoStoreProvider } from './store/TodoStore';
+import { EditorStoreProvider } from './store/EditorStore';
 import { publishNavigate } from './tools/navigation-bridge';
 import CanvasPage from './pages/CanvasPage';
 import TodosPage from './pages/TodosPage';
+import EditorPage from './pages/EditorPage';
 import DebugPanel from './components/DebugPanel';
 
 function NavigateBridge() {
@@ -34,6 +36,7 @@ function Shell() {
   return (
     <CanvasStoreProvider>
       <TodoStoreProvider>
+        <EditorStoreProvider>
         <div className={`app ${debugOpen ? 'debug-shifted' : ''}`}>
           <NavigateBridge />
           <header className="top-nav">
@@ -44,6 +47,9 @@ function Shell() {
               </NavLink>
               <NavLink to="/todos" className={({ isActive }) => `tab-btn ${isActive ? 'is-active' : ''}`}>
                 待办
+              </NavLink>
+              <NavLink to="/editor" className={({ isActive }) => `tab-btn ${isActive ? 'is-active' : ''}`}>
+                编辑器
               </NavLink>
             </nav>
             <button
@@ -63,10 +69,12 @@ function Shell() {
             <Routes>
               <Route path="/" element={<CanvasPage />} />
               <Route path="/todos" element={<TodosPage />} />
+              <Route path="/editor" element={<EditorPage />} />
             </Routes>
           </main>
           <DebugPanel open={debugOpen} onToggle={toggleDebug} />
         </div>
+        </EditorStoreProvider>
       </TodoStoreProvider>
     </CanvasStoreProvider>
   );
