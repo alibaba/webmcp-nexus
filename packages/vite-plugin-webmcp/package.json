@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-webmcp-nexus",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Vite plugin for WebMCP Nexus - auto-generates JSON Schema from TypeScript tool definitions at build time",
   "license": "MIT",
   "keywords": [
