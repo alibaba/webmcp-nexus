@@ -506,13 +506,13 @@ function pushToolsToWidgetImmediately(): void {
 
 /**
  * 通知 MCP relay 工具列表已变化。
- * 发射 W3C 规范事件名 (toolschanged)，toolchange 由 registerTool/unregisterTool 包装器负责。
+ * 通知工具列表已变化，发射标准 toolchange 事件并推送至 widget iframe。
  */
 export function notifyToolsChanged(options: { immediate?: boolean } = {}): void {
   if (typeof navigator === 'undefined' || !('modelContext' in navigator)) return;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (navigator.modelContext as any).dispatchEvent(new Event('toolschanged'));
+    (navigator.modelContext as any).dispatchEvent(new Event('toolchange'));
   } catch {
     // Ignore dispatch errors
   }
