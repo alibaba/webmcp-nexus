@@ -425,10 +425,9 @@ export function unregisterScopedTool(name: string, owner: ToolOwner): boolean {
 
     if (!record.controller.signal.aborted) {
       record.controller.abort();
-      notifyToolsChanged({ immediate: true });
     } else {
       activeTools.delete(name);
-      notifyToolsChanged({ immediate: true });
+      notifyToolsChanged();
     }
     return true;
   } catch {
@@ -448,15 +447,18 @@ let pushToolsTimer: ReturnType<typeof setTimeout> | null = null;
  */
 function pushToolsToWidget(): void {
   try {
-    const tools = getToolsForWidget();
-
     if (typeof document === 'undefined') return;
 
-    // Find all iframes and send updated tool list
-    // The widget iframe listens for 'webmcp.tools.changed' messages
     const iframes = document.querySelectorAll('iframe');
+    if (iframes.length === 0) return;
+
+    const tools = getToolsForWidget();
+
     for (let i = 0; i < iframes.length; i++) {
       const iframe = iframes[i];
+      // embed.js（@mcp-b/webmcp-local-relay）已通过 toolchange 监听自行推送
+      // relay iframe，跳过以避免重复 webmcp.tools.changed 消息
+      if (iframe.hasAttribute('data-webmcp-relay')) continue;
       try {
         if (iframe.contentWindow) {
           iframe.contentWindow.postMessage(
@@ -524,19 +526,10 @@ function schedulePushToolsToWidget(): void {
   }, 100);
 }
 
-function pushToolsToWidgetImmediately(): void {
-  if (pushToolsTimer) {
-    clearTimeout(pushToolsTimer);
-    pushToolsTimer = null;
-  }
-  pushToolsToWidget();
-}
-
 /**
- * 通知 MCP relay 工具列表已变化。
  * 通知工具列表已变化，发射标准 toolchange 事件并推送至 widget iframe。
  */
-export function notifyToolsChanged(options: { immediate?: boolean } = {}): void {
+export function notifyToolsChanged(): void {
   if (typeof navigator === 'undefined' || !('modelContext' in navigator)) return;
   try {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -545,13 +538,7 @@ export function notifyToolsChanged(options: { immediate?: boolean } = {}): void 
     // Ignore dispatch errors
   }
 
-  // Direct push to widget iframe as fallback for Chrome native environment
-  // where registerToolsChangedCallback doesn't fire on unregisterTool
-  if (options.immediate) {
-    pushToolsToWidgetImmediately();
-  } else {
-    schedulePushToolsToWidget();
-  }
+  schedulePushToolsToWidget();
 }
 
 /**

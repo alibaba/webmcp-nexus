@@ -117,7 +117,10 @@ describe('useWebMcpTools', () => {
     const { unmount } = renderHook(() => useWebMcpTools({ myTool: fn }));
     postMessageSpy.mockClear();
 
+    vi.useFakeTimers();
     unmount();
+    vi.advanceTimersByTime(100);
+    vi.useRealTimers();
 
     expect(postMessageSpy).toHaveBeenCalledWith(
       { type: 'webmcp.tools.changed', tools: [] },
@@ -156,7 +159,10 @@ describe('useWebMcpTools', () => {
     const { unmount } = renderHook(() => useWebMcpTools({ myTool: fn }));
     postMessageSpy.mockClear();
 
+    vi.useFakeTimers();
     unmount();
+    vi.advanceTimersByTime(100);
+    vi.useRealTimers();
 
     expect(nativeTools.has('myTool')).toBe(true);
     expect(getActiveToolNames()).toEqual([]);
