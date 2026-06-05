@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 interface ToolInfo {
   name: string;
@@ -101,25 +101,39 @@ export default function DebugPanel({ open }: Props) {
   const [query, setQuery] = useState('');
   const [formValues, setFormValues] = useState<Record<string, Record<string, string>>>({});
   const [invocations, setInvocations] = useState<Record<string, InvocationState>>({});
+  const [toolchangeCount, setToolchangeCount] = useState(0);
+  const pendingRef = useRef(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const bumpToolchange = () => {
+    pendingRef.current++;
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setToolchangeCount(pendingRef.current);
+      pendingRef.current = 0;
+    }, 300);
+  };
 
   useEffect(() => {
     const refresh = () => setTools(readTools());
     refresh();
-    if (typeof navigator === 'undefined' || !('modelContext' in navigator)) return;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mc = (navigator as any).modelContext;
-    if (!mc) return;
+    const mc = typeof navigator !== 'undefined' && 'modelContext' in navigator
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? (navigator as any).modelContext : null;
 
-    const events = ['toolchange', 'toolschanged'];
-    if (typeof mc.addEventListener === 'function') {
-      for (const ev of events) mc.addEventListener(ev, refresh);
+    const onToolChange = () => { refresh(); bumpToolchange(); };
+
+    if (mc && typeof mc.addEventListener === 'function') {
+      mc.addEventListener('toolchange', onToolChange);
     }
+
     const timer = setInterval(refresh, 250);
     return () => {
-      if (typeof mc.removeEventListener === 'function') {
-        for (const ev of events) mc.removeEventListener(ev, refresh);
+      if (mc && typeof mc.removeEventListener === 'function') {
+        mc.removeEventListener('toolchange', onToolChange);
       }
       clearInterval(timer);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
 
@@ -341,6 +355,11 @@ export default function DebugPanel({ open }: Props) {
           <p className="muted">
             当前可用 <strong>{tools.length}</strong> 个工具。
           </p>
+          <div className="debug-events">
+            <span className="debug-events__item" title="toolchange 事件（本次操作）">
+              <code>toolchange</code> <strong>{toolchangeCount}</strong>
+            </span>
+          </div>
         </div>
       </header>
 

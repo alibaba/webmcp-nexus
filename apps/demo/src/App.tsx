@@ -19,7 +19,7 @@ function NavigateBridge() {
 }
 
 function Shell() {
-  const [debugOpen, setDebugOpen] = useState(false);
+  const [debugOpen, setDebugOpen] = useState(true);
   const toggleDebug = useCallback(() => setDebugOpen(v => !v), []);
 
   useEffect(() => {
@@ -80,9 +80,17 @@ function Shell() {
   );
 }
 
+// Vite 注入 import.meta.env.BASE_URL；Webpack 通过 DefinePlugin 注入 process.env.DEMO_BASE
+const rawBase: string =
+  (typeof import.meta !== 'undefined' && import.meta.env?.BASE_URL) ||
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (typeof (globalThis as any).process !== 'undefined' && (globalThis as any).process.env?.DEMO_BASE) ||
+  '/';
+const basename = rawBase.replace(/\/+$/, '') || '/';
+
 export default function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <Shell />
     </BrowserRouter>
   );

@@ -579,6 +579,30 @@ input:focus, select:focus, textarea:focus {
   margin: 0 0 4px;
 }
 
+.debug-events {
+  display: flex;
+  gap: 12px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+.debug-events__item {
+  font-size: 11px;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.debug-events__item code {
+  font-size: 10px;
+  background: var(--surface-alt, rgba(0,0,0,.06));
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+.debug-events__item strong {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
 .debug-panel__search {
   padding: 10px 20px;
   border-bottom: 1px solid var(--border);
