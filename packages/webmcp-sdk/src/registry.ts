@@ -4,6 +4,32 @@ import type { WebMcpToolConfig } from './types';
 let modelContextPatched = false;
 
 /**
+ * 在 dispatchEvent 层面合并 toolchange 事件。
+ * 无论来源（SDK 包装器、polyfill 内部、第三方代码），同一微任务内只触发 1 次。
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function patchDispatchEventForCoalescing(mc: any): void {
+  if (mc.__toolchangeCoalesced) return;
+  const originalDispatch: (event: Event) => boolean =
+    mc.dispatchEvent.bind(mc);
+  let pending = false;
+  mc.dispatchEvent = (event: Event): boolean => {
+    if (event.type === 'toolchange') {
+      if (!pending) {
+        pending = true;
+        queueMicrotask(() => {
+          originalDispatch(new Event('toolchange'));
+          pending = false;
+        });
+      }
+      return true;
+    }
+    return originalDispatch(event);
+  };
+  mc.__toolchangeCoalesced = true;
+}
+
+/**
  * Patches navigator.modelContext to ensure embed.js can discover tools.
  *
  * Handles three scenarios:
@@ -35,8 +61,9 @@ export function patchModelContextEventSupport(): void {
   const hasListTools = typeof mc.listTools === 'function';
   const hasCallTool = typeof mc.callTool === 'function';
 
-  // Scenario 3: fully featured — nothing to patch
+  // Scenario 3: fully featured — only apply toolchange coalescing
   if (hasEventTarget && hasListTools && hasCallTool) {
+    patchDispatchEventForCoalescing(mc);
     modelContextPatched = true;
     return;
   }
@@ -174,6 +201,7 @@ export function patchModelContextEventSupport(): void {
     };
   }
 
+  patchDispatchEventForCoalescing(mc);
   modelContextPatched = true;
 }
 
