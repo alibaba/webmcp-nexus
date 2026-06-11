@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: webmcp_core
-title: WebMCP 核心类型提取与 Schema 生成引擎
-scope:
-    - packages/webmcp-core/
-source_files: []
-depends_on: []
-related_to:
-    - path: webmcp_sdk

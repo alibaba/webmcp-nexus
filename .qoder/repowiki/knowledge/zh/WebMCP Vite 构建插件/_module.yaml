@@ -1,9 +1,0 @@
-schema_version: 1
-module_path: vite_plugin_webmcp
-title: WebMCP Vite 构建插件
-scope:
-    - packages/vite-plugin-webmcp/
-source_files: []
-depends_on: []
-related_to:
-    - path: webpack_plugin_webmcp
