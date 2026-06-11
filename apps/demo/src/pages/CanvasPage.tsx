@@ -50,7 +50,7 @@ export default function CanvasPage() {
   );
 
   /**
-   * [作用域：画板页] 在画布上绘制一条直线。
+   * [作用域：画板页] 在画布上绘制一条直线。可多次调用绘制首尾相连的线段来构成折线或多边形。
    */
   const drawLine = useCallback(
     async (params: {
