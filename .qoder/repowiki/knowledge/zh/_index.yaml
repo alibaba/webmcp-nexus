@@ -1,0 +1,79 @@
+# 知识卡导出索引文件
+schema_version: 1
+locale: zh-CN
+branch: feature/toolchange
+exported_at: "2026-06-11T03:15:02Z"
+modules:
+    "":
+        dir_name: WebMCP Nexus 全栈开发工作区
+        title: WebMCP Nexus 全栈开发工作区
+        scope:
+            - README.md
+            - README.en.md
+            - .gitignore
+            - .npmrc
+            - .prettierignore
+            - .prettierrc
+            - eslint.config.js
+            - package.json
+            - pnpm-lock.yaml
+            - pnpm-workspace.yaml
+            - tsconfig.base.json
+            - scripts/
+            - docs/
+            - .github/
+            - .superpowers/
+            - LICENSE
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    demo_app:
+        dir_name: WebMCP Nexus 演示应用
+        title: WebMCP Nexus 演示应用
+        scope:
+            - apps/demo/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to: []
+    vite_plugin_webmcp:
+        dir_name: WebMCP Vite 构建插件
+        title: WebMCP Vite 构建插件
+        scope:
+            - packages/vite-plugin-webmcp/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: webpack_plugin_webmcp
+    webmcp_core:
+        dir_name: WebMCP 核心类型提取与 Schema 生成引擎
+        title: WebMCP 核心类型提取与 Schema 生成引擎
+        scope:
+            - packages/webmcp-core/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: webmcp_sdk
+    webmcp_sdk:
+        dir_name: WebMCP 浏览器端工具注册 SDK
+        title: WebMCP 浏览器端工具注册 SDK
+        scope:
+            - packages/webmcp-sdk/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: webmcp_core
+    webpack_plugin_webmcp:
+        dir_name: WebMCP Webpack 构建插件
+        title: WebMCP Webpack 构建插件
+        scope:
+            - packages/webpack-plugin-webmcp/
+        source_files: []
+        children: []
+        depends_on: []
+        related_to:
+            - path: vite_plugin_webmcp

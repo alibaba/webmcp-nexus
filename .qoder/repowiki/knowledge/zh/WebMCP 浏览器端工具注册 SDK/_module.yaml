@@ -1,0 +1,9 @@
+schema_version: 1
+module_path: webmcp_sdk
+title: WebMCP 浏览器端工具注册 SDK
+scope:
+    - packages/webmcp-sdk/
+source_files: []
+depends_on: []
+related_to:
+    - path: webmcp_core

@@ -1,0 +1,23 @@
+schema_version: 1
+module_path: ""
+title: WebMCP Nexus 全栈开发工作区
+scope:
+    - README.md
+    - README.en.md
+    - .gitignore
+    - .npmrc
+    - .prettierignore
+    - .prettierrc
+    - eslint.config.js
+    - package.json
+    - pnpm-lock.yaml
+    - pnpm-workspace.yaml
+    - tsconfig.base.json
+    - scripts/
+    - docs/
+    - .github/
+    - .superpowers/
+    - LICENSE
+source_files: []
+depends_on: []
+related_to: []
