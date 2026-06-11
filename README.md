@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/alibaba-webmcp-nexus-badge.png)](https://mseep.ai/app/alibaba-webmcp-nexus)
+
 <div align="center">
 
 # WebMCP Nexus
