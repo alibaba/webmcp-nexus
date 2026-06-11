@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCanvasStore } from '../../store/CanvasStore';
-import type { Shape, ShapeType } from '../../store/types';
+import type { Shape, ShapeType, TextAlign } from '../../store/types';
 
 let _measureCtx: CanvasRenderingContext2D | null = null;
 function getMeasureCtx(): CanvasRenderingContext2D {
@@ -12,9 +12,24 @@ function getMeasureCtx(): CanvasRenderingContext2D {
 
 const TEXT_FONT = 'Inter, -apple-system, "PingFang SC", system-ui, sans-serif';
 
-function getTextLines(text: string, fontSize: number, maxWidth?: number): string[] {
+function buildFont(fontSize: number, bold?: boolean, italic?: boolean): string {
+  const parts: string[] = [];
+  if (italic) parts.push('italic');
+  if (bold) parts.push('bold');
+  parts.push(`${fontSize}px`);
+  parts.push(TEXT_FONT);
+  return parts.join(' ');
+}
+
+function getTextLines(
+  text: string,
+  fontSize: number,
+  maxWidth?: number,
+  bold?: boolean,
+  italic?: boolean,
+): string[] {
   const ctx = getMeasureCtx();
-  ctx.font = `${fontSize}px ${TEXT_FONT}`;
+  ctx.font = buildFont(fontSize, bold, italic);
   const paragraphs = (text || '').split('\n');
   if (!maxWidth) return paragraphs;
   const lines: string[] = [];
@@ -37,9 +52,9 @@ function getTextLines(text: string, fontSize: number, maxWidth?: number): string
 
 function getTextBounds(shape: Shape): { w: number; h: number } {
   const fontSize = shape.fontSize ?? 16;
-  const lines = getTextLines(shape.text || '', fontSize, shape.width);
+  const lines = getTextLines(shape.text || '', fontSize, shape.width, shape.bold, shape.italic);
   const ctx = getMeasureCtx();
-  ctx.font = `${fontSize}px ${TEXT_FONT}`;
+  ctx.font = buildFont(fontSize, shape.bold, shape.italic);
   let maxW = 0;
   for (const line of lines) {
     const m = ctx.measureText(line).width;
@@ -52,6 +67,11 @@ interface Props {
   activeTool: ShapeType;
   activeColor: string;
   lineWidth: number;
+  textBold: boolean;
+  textItalic: boolean;
+  textAlign: TextAlign;
+  textFontSize: number;
+  onSelectionChange?: (id: string | null) => void;
 }
 
 function renderShape(ctx: CanvasRenderingContext2D, shape: Shape) {
@@ -93,16 +113,29 @@ function renderShape(ctx: CanvasRenderingContext2D, shape: Shape) {
       ctx.stroke();
       break;
     }
+    case 'ellipse': {
+      ctx.beginPath();
+      ctx.ellipse(shape.cx!, shape.cy!, shape.rx!, shape.ry!, 0, 0, Math.PI * 2);
+      if (shape.fill) ctx.fill();
+      ctx.stroke();
+      break;
+    }
     case 'text': {
       const fontSize = shape.fontSize || 16;
       const lineHeight = fontSize * 1.4;
       const halfLeading = (lineHeight - fontSize) / 2;
-      ctx.font = `${fontSize}px ${TEXT_FONT}`;
+      ctx.font = buildFont(fontSize, shape.bold, shape.italic);
       ctx.fillStyle = shape.color;
       ctx.textBaseline = 'top';
-      const lines = getTextLines(shape.text || '', fontSize, shape.width);
+      const align: TextAlign = shape.align ?? 'left';
+      ctx.textAlign = align;
+      const boxWidth = shape.width ?? 0;
+      let drawX = shape.x!;
+      if (align === 'center') drawX = shape.x! + boxWidth / 2;
+      else if (align === 'right') drawX = shape.x! + boxWidth;
+      const lines = getTextLines(shape.text || '', fontSize, shape.width, shape.bold, shape.italic);
       for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i], shape.x!, shape.y! + halfLeading + i * lineHeight);
+        ctx.fillText(lines[i], drawX, shape.y! + halfLeading + i * lineHeight);
       }
       break;
     }
@@ -127,6 +160,13 @@ function hitTest(shape: Shape, px: number, py: number): boolean {
       return px >= shape.x! && px <= shape.x! + shape.width! && py >= shape.y! && py <= shape.y! + shape.height!;
     case 'circle':
       return Math.hypot(px - shape.cx!, py - shape.cy!) <= shape.radius! + HIT_TOLERANCE;
+    case 'ellipse': {
+      const rx = Math.max(shape.rx!, 1);
+      const ry = Math.max(shape.ry!, 1);
+      const ndx = (px - shape.cx!) / rx;
+      const ndy = (py - shape.cy!) / ry;
+      return ndx * ndx + ndy * ndy <= 1.1;
+    }
     case 'line':
       return distToSegment(px, py, shape.x1!, shape.y1!, shape.x2!, shape.y2!) < HIT_TOLERANCE;
     case 'text': {
@@ -157,24 +197,50 @@ function moveShape(shape: Shape, dx: number, dy: number): Partial<Omit<Shape, 'i
     case 'text':
       return { x: shape.x! + dx, y: shape.y! + dy };
     case 'circle':
+    case 'ellipse':
       return { cx: shape.cx! + dx, cy: shape.cy! + dy };
     default:
       return {};
   }
 }
 
-export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Props) {
+export default function DrawingCanvas({
+  activeTool,
+  activeColor,
+  lineWidth,
+  textBold,
+  textItalic,
+  textAlign,
+  textFontSize,
+  onSelectionChange,
+}: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const { shapes, addShape, updateShape } = useCanvasStore();
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(null);
-  const [textInput, setTextInput] = useState<{ x: number; y: number; width: number; height: number; editingId?: string; initialText?: string } | null>(null);
+  const [textInput, setTextInput] = useState<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fontSize: number;
+    bold: boolean;
+    italic: boolean;
+    align: TextAlign;
+    color: string;
+    editingId?: string;
+    initialText?: string;
+  } | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
   const [dragOffset, setDragOffset] = useState<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    onSelectionChange?.(selectedId);
+  }, [selectedId, onSelectionChange]);
 
   const getCanvasPoint = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -219,6 +285,11 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
             ctx.arc(shape.cx!, shape.cy!, shape.radius! + 4, 0, Math.PI * 2);
             ctx.stroke();
             break;
+          case 'ellipse':
+            ctx.beginPath();
+            ctx.ellipse(shape.cx!, shape.cy!, shape.rx! + 4, shape.ry! + 4, 0, 0, Math.PI * 2);
+            ctx.stroke();
+            break;
           case 'line':
             ctx.strokeRect(
               Math.min(shape.x1!, shape.x2!) - 4, Math.min(shape.y1!, shape.y2!) - 4,
@@ -227,7 +298,8 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
             break;
           case 'text': {
             const { w, h } = getTextBounds(shape);
-            ctx.strokeRect(shape.x! - 4, shape.y! - 4, w + 8, h + 8);
+            const boxWidth = Math.max(shape.width ?? 0, w);
+            ctx.strokeRect(shape.x! - 4, shape.y! - 4, boxWidth + 8, h + 8);
             break;
           }
           case 'freehand': {
@@ -315,6 +387,15 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
       ctx.beginPath();
       ctx.arc(startPoint.x, startPoint.y, radius, 0, Math.PI * 2);
       ctx.stroke();
+    } else if (activeTool === 'ellipse' && startPoint && currentPoints.length > 0) {
+      const end = currentPoints[currentPoints.length - 1];
+      const cx = (startPoint.x + end.x) / 2;
+      const cy = (startPoint.y + end.y) / 2;
+      const rx = Math.abs(end.x - startPoint.x) / 2;
+      const ry = Math.abs(end.y - startPoint.y) / 2;
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
     } else if (activeTool === 'text' && startPoint && currentPoints.length > 0) {
       const end = currentPoints[currentPoints.length - 1];
       const x = Math.min(startPoint.x, end.x);
@@ -330,8 +411,6 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
     }
   }, [isDrawing, currentPoints, startPoint, activeTool, activeColor, lineWidth, shapes]);
 
-  const TEXT_FONT_SIZE = 16;
-
   const handleTextSubmit = useCallback(
     (text: string) => {
       if (!textInput) return;
@@ -340,11 +419,24 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
           updateShape(textInput.editingId, { text, width: textInput.width, height: textInput.height });
         }
       } else if (text.trim()) {
-        addShape({ type: 'text', color: activeColor, lineWidth: 1, x: textInput.x, y: textInput.y, width: textInput.width, height: textInput.height, text, fontSize: TEXT_FONT_SIZE });
+        addShape({
+          type: 'text',
+          color: textInput.color,
+          lineWidth: 1,
+          x: textInput.x,
+          y: textInput.y,
+          width: textInput.width,
+          height: textInput.height,
+          text,
+          fontSize: textInput.fontSize,
+          bold: textInput.bold,
+          italic: textInput.italic,
+          align: textInput.align,
+        });
       }
       setTextInput(null);
     },
-    [textInput, activeColor, addShape, updateShape],
+    [textInput, addShape, updateShape],
   );
 
   const handleTextareaInput = useCallback(() => {
@@ -426,7 +518,14 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
         const w = Math.abs(end.x - startPoint.x);
         const h = Math.abs(end.y - startPoint.y);
         if (w > 10 && h > 10) {
-          setTextInput({ x, y, width: w, height: h });
+          setTextInput({
+            x, y, width: w, height: h,
+            fontSize: textFontSize,
+            bold: textBold,
+            italic: textItalic,
+            align: textAlign,
+            color: activeColor,
+          });
         }
       }
       setCurrentPoints([]);
@@ -464,11 +563,22 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
           addShape({ type: 'circle', color: activeColor, lineWidth, cx: startPoint.x, cy: startPoint.y, radius });
         }
       }
+    } else if (activeTool === 'ellipse') {
+      const end = currentPoints[currentPoints.length - 1];
+      if (end) {
+        const cx = (startPoint.x + end.x) / 2;
+        const cy = (startPoint.y + end.y) / 2;
+        const rx = Math.abs(end.x - startPoint.x) / 2;
+        const ry = Math.abs(end.y - startPoint.y) / 2;
+        if (rx > 1 && ry > 1) {
+          addShape({ type: 'ellipse', color: activeColor, lineWidth, cx, cy, rx, ry });
+        }
+      }
     }
 
     setCurrentPoints([]);
     setStartPoint(null);
-  }, [activeTool, selectedId, dragOffset, shapes, updateShape, isDrawing, startPoint, activeColor, lineWidth, currentPoints, addShape]);
+  }, [activeTool, selectedId, dragOffset, shapes, updateShape, isDrawing, startPoint, activeColor, lineWidth, currentPoints, addShape, textBold, textItalic, textAlign, textFontSize]);
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -482,6 +592,11 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
             y: shape.y!,
             width: shape.width || 200,
             height: Math.max(shape.height || h, h),
+            fontSize: shape.fontSize ?? 16,
+            bold: shape.bold ?? false,
+            italic: shape.italic ?? false,
+            align: shape.align ?? 'left',
+            color: shape.color,
             editingId: shape.id,
             initialText: shape.text || '',
           });
@@ -518,9 +633,12 @@ export default function DrawingCanvas({ activeTool, activeColor, lineWidth }: Pr
               height: '100%',
               resize: 'none',
               padding: 0,
-              fontSize: `${TEXT_FONT_SIZE}px`,
+              fontSize: `${textInput.fontSize}px`,
+              fontWeight: textInput.bold ? 'bold' : 'normal',
+              fontStyle: textInput.italic ? 'italic' : 'normal',
+              textAlign: textInput.align,
               lineHeight: 1.4,
-              color: activeColor,
+              color: textInput.color,
               fontFamily: `${TEXT_FONT}`,
             }}
             onInput={handleTextareaInput}

@@ -32,7 +32,16 @@ export const STATUS_LABEL: Record<TodoStatus, string> = {
 };
 
 // Canvas types
-export type ShapeType = 'select' | 'freehand' | 'line' | 'rect' | 'circle' | 'text';
+export type ShapeType =
+  | 'select'
+  | 'freehand'
+  | 'line'
+  | 'rect'
+  | 'circle'
+  | 'ellipse'
+  | 'text';
+
+export type TextAlign = 'left' | 'center' | 'right';
 
 export interface Shape {
   id: string;
@@ -51,7 +60,12 @@ export interface Shape {
   cx?: number;
   cy?: number;
   radius?: number;
+  rx?: number;
+  ry?: number;
   text?: string;
   fontSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  align?: TextAlign;
   fill?: string | null;
 }

@@ -189,23 +189,23 @@ input:focus, select:focus, textarea:focus {
 }
 
 .canvas-toolbar {
-  position: absolute;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
+  align-self: stretch;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 2px;
+  margin: 12px 12px 0;
   background: var(--surface);
-  border-radius: var(--radius);
+  border-radius: var(--radius) var(--radius) 0 0;
   padding: 6px 8px;
-  box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
-  z-index: 10;
+  border-bottom: none;
 }
 
 .canvas-toolbar__group {
   display: flex;
+  align-items: center;
   gap: 2px;
 }
 
@@ -230,6 +230,14 @@ input:focus, select:focus, textarea:focus {
   background: var(--accent);
   color: white;
 }
+.canvas-toolbar__btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.canvas-toolbar__btn:disabled:hover {
+  background: transparent;
+  color: var(--text-soft);
+}
 
 .canvas-toolbar__divider {
   width: 1px;
@@ -238,15 +246,32 @@ input:focus, select:focus, textarea:focus {
   margin: 0 6px;
 }
 
+.canvas-toolbar__select {
+  height: 28px;
+  padding: 0 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  align-self: center;
+}
+.canvas-toolbar__select:hover {
+  background: var(--surface-2);
+}
+
 /* Color Picker */
 .color-picker {
   position: relative;
+  display: flex;
+  align-items: center;
 }
 .color-picker__trigger {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 2px solid var(--border);
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
   cursor: pointer;
   transition: border-color 120ms;
 }
@@ -285,8 +310,8 @@ input:focus, select:focus, textarea:focus {
 /* Canvas */
 .canvas-container {
   flex: 1;
-  margin: 12px;
-  border-radius: var(--radius);
+  margin: 0 12px 12px;
+  border-radius: 0 0 var(--radius) var(--radius);
   background: var(--surface);
   border: 1px solid var(--border);
   overflow: hidden;
