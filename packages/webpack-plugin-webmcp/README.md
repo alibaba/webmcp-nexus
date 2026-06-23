@@ -34,7 +34,7 @@
 
 ## 核心特性
 
-- 📦 **支持 Webpack 5+** —— 通过 `compiler.options.module.rules` 自动注入 Loader，无需手动配置 `use`。
+- 📦 **支持 Webpack 4+ / 5+** —— 通过 `compiler.options.module.rules` 自动注入 Loader，无需手动配置 `use`。
 - 🔬 **类型即 Schema** —— 函数签名 + JSDoc 自动生成 JSON Schema，单一事实源。
 - 🛠️ **Alias 自动合并** —— 自动读取 Webpack 的 `resolve.alias`（对象与数组形式皆可），并允许用户额外配置。
 - 📂 **灵活的 include 配置** —— 可指定多个目录前缀，仅扫描你关心的源码。

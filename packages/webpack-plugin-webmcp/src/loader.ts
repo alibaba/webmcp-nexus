@@ -13,7 +13,13 @@ export default function webmcpLoader(
   source: string,
 ): string {
   const filePath = this.resourcePath;
-  const options = this.getOptions() ?? {};
+  // webpack v5: this.getOptions() 内置可用
+  // webpack v4: options 挂载在 this.query 上（对象或 query string）
+  const raw = typeof this.getOptions === 'function'
+    ? this.getOptions()
+    : (this as any).query;
+  const options: WebMcpLoaderOptions =
+    (raw && typeof raw === 'object') ? raw : {};
 
   if (isDebug()) {
     console.log(`[webmcp] loader processing: ${filePath}`);

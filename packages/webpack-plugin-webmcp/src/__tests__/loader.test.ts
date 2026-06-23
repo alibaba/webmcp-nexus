@@ -16,6 +16,19 @@ function createLoaderContext(resourcePath: string, options: Record<string, unkno
   } as any;
 }
 
+/** Simulate webpack v4 loader context (no getOptions, uses this.query) */
+function createV4LoaderContext(
+  resourcePath: string,
+  query: unknown = {},
+) {
+  return {
+    resourcePath,
+    query,
+    // No getOptions — simulates webpack v4
+    emitWarning: vi.fn(),
+  } as any;
+}
+
 describe('webmcpLoader', () => {
   it('should return original source when transformCode returns transformed: false', () => {
     const source = 'const foo = 1;';
@@ -55,6 +68,48 @@ describe('webmcpLoader', () => {
     webmcpLoader.call(context, source);
 
     expect(mockedTransformCode).toHaveBeenCalledWith(source, '/my/project/src/app.tsx', {
+      projectRoot: undefined,
+    });
+  });
+});
+
+describe('webmcpLoader (webpack v4 fallback)', () => {
+  it('should read options from this.query when getOptions is unavailable', () => {
+    const source = 'const foo = 1;';
+    mockedTransformCode.mockReturnValue({ code: source, transformed: false });
+
+    const context = createV4LoaderContext('/project/src/tools.ts', {
+      projectRoot: '/project',
+      alias: { '@utils': '/project/src/utils' },
+    });
+    webmcpLoader.call(context, source);
+
+    expect(mockedTransformCode).toHaveBeenCalledWith(source, '/project/src/tools.ts', {
+      projectRoot: '/project',
+      alias: { '@utils': '/project/src/utils' },
+    });
+  });
+
+  it('should fallback to empty options when this.query is a string (query string)', () => {
+    const source = 'const foo = 1;';
+    mockedTransformCode.mockReturnValue({ code: source, transformed: false });
+
+    const context = createV4LoaderContext('/project/src/tools.ts', '?projectRoot=/foo');
+    webmcpLoader.call(context, source);
+
+    expect(mockedTransformCode).toHaveBeenCalledWith(source, '/project/src/tools.ts', {
+      projectRoot: undefined,
+    });
+  });
+
+  it('should fallback to empty options when this.query is undefined', () => {
+    const source = 'const foo = 1;';
+    mockedTransformCode.mockReturnValue({ code: source, transformed: false });
+
+    const context = createV4LoaderContext('/project/src/tools.ts', undefined);
+    webmcpLoader.call(context, source);
+
+    expect(mockedTransformCode).toHaveBeenCalledWith(source, '/project/src/tools.ts', {
       projectRoot: undefined,
     });
   });

@@ -34,7 +34,7 @@ Used together with [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nex
 
 ## Features
 
-- 📦 **Webpack 5+ support** — auto-injects the Loader into `compiler.options.module.rules`; no manual `use` configuration required.
+- 📦 **Webpack 4+ / 5+ support** — auto-injects the Loader into `compiler.options.module.rules`; no manual `use` configuration required.
 - 🔬 **Types as schema** — function signatures + JSDoc are turned into JSON Schema; one source of truth.
 - 🛠️ **Automatic alias merging** — picks up Webpack's `resolve.alias` (object or array form) and lets you extend it.
 - 📂 **Flexible `include` configuration** — accept multiple directory prefixes to scope analysis.
