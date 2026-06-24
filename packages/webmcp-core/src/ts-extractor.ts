@@ -21,6 +21,7 @@ import {
   type FunctionDeclaration,
   type ArrowFunction,
   type FunctionExpression,
+  type MethodDeclaration,
 } from 'ts-morph';
 import type { PropertyInfo } from './schema-generator';
 
@@ -40,8 +41,15 @@ export interface ExtractedTool {
    * 注入目标表达式。
    * 对于对象字面量参数中的本地变量：变量名，如 "searchInPanel"
    * 对于 namespace import：namespace.exportName，如 "userApi.getUser"
+   * 对于 class 原型方法："ClassName.prototype.methodName"
    */
   injectionTarget: string;
+  /**
+   * class 成员类型。仅在 withWebMcpTools 场景下有值。
+   * - 'prototype'：原型方法（MethodDeclaration）
+   * - 'field'：class field 箭头函数（PropertyDeclaration）
+   */
+  memberType?: 'prototype' | 'field';
 }
 
 /** 注册调用的提取结果 */
@@ -51,7 +59,7 @@ export interface ExtractionResult {
   /** 注册调用的位置信息（用于在调用前注入代码） */
   registrationCalls: {
     /** 调用类型 */
-    type: 'registerGlobalTools' | 'useWebMcpTools';
+    type: 'registerGlobalTools' | 'useWebMcpTools' | 'withWebMcpTools';
     /** 调用在源码中的起始位置（字符偏移量） */
     start: number;
   }[];
@@ -64,7 +72,7 @@ export interface ExtractionResult {
 export type AliasMap = Record<string, string>;
 
 // 需要追踪的注册函数名
-const REGISTRATION_FUNCTIONS = ['registerGlobalTools', 'useWebMcpTools'] as const;
+const REGISTRATION_FUNCTIONS = ['registerGlobalTools', 'useWebMcpTools', 'withWebMcpTools'] as const;
 
 const isDebug = () => (process.env.DEBUG ?? '').toLowerCase().includes('webmcp');
 
@@ -234,7 +242,26 @@ function extractFunctionMetadata(
     return { description, readOnly, properties };
   }
 
-  // 场景 2：箭头函数或函数表达式（const xxx = async (...) => { ... }）
+  // 场景 2：class 方法声明（class Foo { method(params) { ... } }）
+  if (node.getKind() === SyntaxKind.MethodDeclaration) {
+    const methodDecl = node as MethodDeclaration;
+    const jsDocs = methodDecl.getJsDocs();
+    if (jsDocs.length > 0) {
+      description = jsDocs[0].getDescription()?.trim() ?? '';
+      const tags = jsDocs[0].getTags();
+      readOnly = tags.some(tag => tag.getTagName() === 'readonly');
+    }
+
+    const params = methodDecl.getParameters();
+    if (params.length > 0) {
+      const paramType = params[0].getType();
+      properties = extractProperties(paramType);
+    }
+
+    return { description, readOnly, properties };
+  }
+
+  // 场景 3：箭头函数或函数表达式（const xxx = async (...) => { ... }）
   // 此时 JSDoc 在变量声明语句上
   if (
     node.getKind() === SyntaxKind.ArrowFunction ||
@@ -631,8 +658,156 @@ function resolveNamespaceImportArg(
   return tools;
 }
 
+// React 生命周期方法黑名单，不应被注册为工具
+const REACT_LIFECYCLE_METHODS = new Set([
+  'constructor', 'render',
+  'componentDidMount', 'componentDidUpdate', 'componentWillUnmount',
+  'shouldComponentUpdate', 'getSnapshotBeforeUpdate',
+  'componentDidCatch', 'getDerivedStateFromProps', 'getDerivedStateFromError',
+  'UNSAFE_componentWillMount', 'UNSAFE_componentWillReceiveProps', 'UNSAFE_componentWillUpdate',
+]);
+
 /**
- * 从源文件中提取所有 registerGlobalTools / useWebMcpTools 调用引用的工具
+ * 解析 withWebMcpTools(MyClass) / withWebMcpTools(MyClass, ['method1']) 调用参数。
+ * 从 class 声明中提取原型方法和 class field 箭头函数的工具元数据。
+ */
+function resolveClassComponentArg(
+  args: Node[],
+  sourceFile: SourceFile,
+  _project: Project,
+  projectRoot?: string,
+): ExtractedTool[] {
+  const tools: ExtractedTool[] = [];
+  if (args.length === 0) return tools;
+
+  const firstArg = args[0];
+  if (firstArg.getKind() !== SyntaxKind.Identifier) return tools;
+
+  // 解析第一个参数到 class 声明
+  const symbol = firstArg.getSymbol();
+  if (!symbol) return tools;
+
+  const declarations = symbol.getDeclarations();
+  if (declarations.length === 0) return tools;
+
+  let classDecl: Node | undefined;
+  for (const decl of declarations) {
+    if (decl.getKind() === SyntaxKind.ClassDeclaration) {
+      classDecl = decl;
+      break;
+    }
+    // const Foo = class { } 形式
+    if (decl.getKind() === SyntaxKind.VariableDeclaration) {
+      const init = (decl as any).getInitializer?.();
+      if (init && init.getKind() === SyntaxKind.ClassExpression) {
+        classDecl = init;
+        break;
+      }
+    }
+  }
+
+  if (!classDecl) return tools;
+
+  // 获取 class 名称
+  const className = firstArg.getText();
+  if (!className) {
+    console.warn(`[webmcp] withWebMcpTools: anonymous class is not supported, skipping.`);
+    return tools;
+  }
+
+  // 解析第二个参数（可选）：显式方法名列表
+  let explicitMethods: Set<string> | null = null;
+  if (args.length > 1 && args[1].getKind() === SyntaxKind.ArrayLiteralExpression) {
+    explicitMethods = new Set<string>();
+    const arrayLiteral = args[1] as any;
+    for (const element of arrayLiteral.getElements()) {
+      if (element.getKind() === SyntaxKind.StringLiteral) {
+        explicitMethods.add(element.getLiteralValue());
+      }
+    }
+  }
+
+  const filePath = sourceFile.getFilePath();
+  const baseDir = projectRoot ?? process.cwd();
+  const relPath = './' + nodePath.relative(baseDir, filePath).replace(/\.tsx?$/, '');
+
+  // 遍历 class 成员
+  const members = (classDecl as any).getMembers?.() ?? [];
+  for (const member of members) {
+    const memberKind = member.getKind();
+
+    // --- 原型方法 (MethodDeclaration) ---
+    if (memberKind === SyntaxKind.MethodDeclaration) {
+      const name = member.getName?.();
+      if (!name || REACT_LIFECYCLE_METHODS.has(name)) continue;
+      if (explicitMethods && !explicitMethods.has(name)) continue;
+
+      const metadata = extractFunctionMetadata(member, sourceFile);
+      // 自动模式：仅提取带 JSDoc 的方法
+      if (!explicitMethods && !metadata.description) continue;
+
+      tools.push({
+        name,
+        description: metadata.description,
+        properties: metadata.properties,
+        readOnly: metadata.readOnly,
+        sourceFile: relPath,
+        injectionTarget: `${className}.prototype.${name}`,
+        memberType: 'prototype',
+      });
+    }
+
+    // --- Class Field 箭头函数 (PropertyDeclaration) ---
+    if (memberKind === SyntaxKind.PropertyDeclaration) {
+      const name = member.getName?.();
+      if (!name || REACT_LIFECYCLE_METHODS.has(name)) continue;
+      if (explicitMethods && !explicitMethods.has(name)) continue;
+
+      // 检查 initializer 是否为 ArrowFunction 或 FunctionExpression
+      const initializer = member.getInitializer?.();
+      if (!initializer) continue;
+      const initKind = initializer.getKind();
+      if (initKind !== SyntaxKind.ArrowFunction && initKind !== SyntaxKind.FunctionExpression) continue;
+
+      // JSDoc 从 PropertyDeclaration 节点直接提取
+      let description = '';
+      let readOnly = false;
+      const jsDocs = member.getJsDocs?.();
+      if (jsDocs && jsDocs.length > 0) {
+        description = jsDocs[0].getDescription?.()?.trim() ?? '';
+        const tags = jsDocs[0].getTags?.() ?? [];
+        readOnly = tags.some((tag: any) => tag.getTagName() === 'readonly');
+      }
+
+      // 自动模式：仅提取带 JSDoc 的方法
+      if (!explicitMethods && !description) continue;
+
+      // 从 ArrowFunction 提取参数类型
+      let properties: PropertyInfo[] = [];
+      const funcNode = initializer as any;
+      const params = funcNode.getParameters?.();
+      if (params && params.length > 0) {
+        const paramType = params[0].getType();
+        properties = extractProperties(paramType);
+      }
+
+      tools.push({
+        name,
+        description,
+        properties,
+        readOnly,
+        sourceFile: relPath,
+        injectionTarget: `${className}.__webmcpFieldSchemas`,
+        memberType: 'field',
+      });
+    }
+  }
+
+  return tools;
+}
+
+/**
+ * 从源文件中提取所有 registerGlobalTools / useWebMcpTools / withWebMcpTools 调用引用的工具
  *
  * @param fileContent - 源文件内容
  * @param filePath - 源文件绝对路径
@@ -696,6 +871,14 @@ export function extractToolsFromFile(
 
       // 解析每个参数
       const args = callExpr.getArguments();
+
+      // withWebMcpTools 的参数是 class 引用，需用专门的解析逻辑
+      if (exprText === 'withWebMcpTools') {
+        const tools = resolveClassComponentArg(args, sourceFile, project, projectRoot);
+        result.tools.push(...tools);
+        return;
+      }
+
       for (const arg of args) {
         if (arg.getKind() === SyntaxKind.ObjectLiteralExpression) {
           // 对象字面量：{ fn1, fn2 }

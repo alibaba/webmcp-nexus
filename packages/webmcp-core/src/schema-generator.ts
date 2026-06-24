@@ -85,6 +85,35 @@ export function generateSchemaInjectionCode(
   return `${injectionTarget}.__webmcpSchema = ${JSON.stringify(schemaObj, null, 2)};`;
 }
 
+/**
+ * 为 class field 箭头函数生成聚合的静态属性注入代码。
+ *
+ * 输出形如：
+ * ```
+ * ClassName.__webmcpFieldSchemas = { "method1": {...}, "method2": {...} };
+ * ```
+ *
+ * @param className - class 名称
+ * @param fieldTools - class field 工具元数据列表
+ * @returns 注入代码字符串
+ */
+export function generateFieldSchemasInjectionCode(
+  className: string,
+  fieldTools: Array<{ name: string; description: string; properties: PropertyInfo[]; readOnly: boolean }>,
+): string {
+  const schemas: Record<string, object> = {};
+  for (const tool of fieldTools) {
+    const inputSchema = generateSchema(tool.properties);
+    delete inputSchema.description;
+    schemas[tool.name] = {
+      description: tool.description,
+      inputSchema,
+      readOnly: tool.readOnly,
+    };
+  }
+  return `${className}.__webmcpFieldSchemas = ${JSON.stringify(schemas, null, 2)};`;
+}
+
 export function mapTypeToSchema(prop: PropertyInfo): JsonSchema {
   const schema: JsonSchema = { type: 'string' };
 

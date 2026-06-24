@@ -6,5 +6,5 @@ export type { TransformOptions, TransformResult } from './transform';
 export { extractToolsFromFile, mapType, extractProperties, resolveWithAlias } from './ts-extractor';
 export type { ExtractedTool, ExtractionResult, AliasMap } from './ts-extractor';
 
-export { generateSchema, generateSchemaInjectionCode, mapTypeToSchema } from './schema-generator';
+export { generateSchema, generateSchemaInjectionCode, generateFieldSchemasInjectionCode, mapTypeToSchema } from './schema-generator';
 export type { JsonSchema, PropertyInfo } from './schema-generator';

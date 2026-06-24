@@ -1,5 +1,5 @@
 import { extractToolsFromFile, type AliasMap } from './ts-extractor';
-import { generateSchemaInjectionCode } from './schema-generator';
+import { generateSchemaInjectionCode, generateFieldSchemasInjectionCode } from './schema-generator';
 
 export interface TransformOptions {
   projectRoot?: string;
@@ -34,7 +34,7 @@ export function transformCode(
   options: TransformOptions = {},
 ): TransformResult {
   // 快速检测：文件中是否包含注册调用
-  if (!code.includes('registerGlobalTools') && !code.includes('useWebMcpTools')) {
+  if (!code.includes('registerGlobalTools') && !code.includes('useWebMcpTools') && !code.includes('withWebMcpTools')) {
     return { code, transformed: false };
   }
 
@@ -52,7 +52,10 @@ export function transformCode(
 
   // 生成注入代码
   const injections: string[] = [];
+
+  // 原型方法和普通函数：逐个注入 __webmcpSchema
   for (const tool of result.tools) {
+    if (tool.memberType === 'field') continue; // field 类型单独处理
     const injectionCode = generateSchemaInjectionCode(
       tool.injectionTarget,
       tool.description,
@@ -60,6 +63,26 @@ export function transformCode(
       tool.readOnly,
     );
     injections.push(injectionCode);
+  }
+
+  // Class field 箭头函数：按 className 分组后聚合注入 __webmcpFieldSchemas
+  const fieldToolsByClass = new Map<string, Array<{ name: string; description: string; properties: typeof result.tools[0]['properties']; readOnly: boolean }>>();
+  for (const tool of result.tools) {
+    if (tool.memberType !== 'field') continue;
+    // injectionTarget 格式为 "ClassName.__webmcpFieldSchemas"
+    const className = tool.injectionTarget.replace('.__webmcpFieldSchemas', '');
+    if (!fieldToolsByClass.has(className)) {
+      fieldToolsByClass.set(className, []);
+    }
+    fieldToolsByClass.get(className)!.push({
+      name: tool.name,
+      description: tool.description,
+      properties: tool.properties,
+      readOnly: tool.readOnly,
+    });
+  }
+  for (const [className, fieldTools] of fieldToolsByClass) {
+    injections.push(generateFieldSchemasInjectionCode(className, fieldTools));
   }
 
   if (injections.length === 0) {
