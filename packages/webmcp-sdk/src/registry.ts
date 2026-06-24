@@ -4,6 +4,52 @@ import type { WebMcpToolConfig } from './types';
 let modelContextPatched = false;
 
 /**
+ * 严格判断值是否为合法的 MCP CallToolResult。
+ * 检查 content 数组存在且首元素含合法 type 字段，防止业务对象误判。
+ */
+export function isCallToolResult(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const obj = value as Record<string, unknown>;
+  if (!Array.isArray(obj.content)) return false;
+  if (obj.content.length === 0) return true;
+  const first = obj.content[0];
+  return (
+    first !== null &&
+    typeof first === 'object' &&
+    'type' in first &&
+    ((first as Record<string, unknown>).type === 'text' ||
+     (first as Record<string, unknown>).type === 'image' ||
+     (first as Record<string, unknown>).type === 'resource')
+  );
+}
+
+/**
+ * 将工具原始返回值规范化为 MCP CallToolResult 格式。
+ * 若已是合法 CallToolResult 则直接返回，否则将完整内容包装为 text content。
+ * 注意：不对结果做任何截断，完整保留工具返回的全部数据。
+ */
+export function normalizeToCallToolResult(value: unknown): Record<string, unknown> {
+  if (isCallToolResult(value)) {
+    return value as Record<string, unknown>;
+  }
+  let text: string;
+  if (typeof value === 'string') {
+    text = value;
+  } else {
+    try {
+      const serialized = JSON.stringify(value);
+      text = serialized === undefined ? String(value) : serialized;
+    } catch {
+      text = String(value);
+    }
+  }
+  return {
+    content: [{ type: 'text', text }],
+    isError: false,
+  };
+}
+
+/**
  * 在 dispatchEvent 层面合并 toolchange 事件。
  * 无论来源（SDK 包装器、polyfill 内部、第三方代码），同一微任务内只触发 1 次。
  */
@@ -151,9 +197,10 @@ export function patchModelContextEventSupport(): void {
             };
           }
           try {
-            return JSON.parse(result);
+            const parsed = JSON.parse(result);
+            return normalizeToCallToolResult(parsed);
           } catch {
-            throw new Error(`Tool returned invalid JSON: ${String(result).slice(0, 200)}`);
+            throw new Error(`Tool returned invalid JSON: ${String(result).slice(0, 500)}`);
           }
         };
       }

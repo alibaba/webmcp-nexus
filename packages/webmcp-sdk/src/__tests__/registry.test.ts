@@ -331,3 +331,210 @@ describe('scoped tool lifecycle', () => {
     ]);
   });
 });
+
+import {
+  isCallToolResult,
+  normalizeToCallToolResult,
+} from '../registry';
+
+describe('isCallToolResult', () => {
+  it('合法 text content → true', () => {
+    expect(isCallToolResult({ content: [{ type: 'text', text: 'hello' }] })).toBe(true);
+  });
+
+  it('合法 image content → true', () => {
+    expect(isCallToolResult({ content: [{ type: 'image', data: '...' }] })).toBe(true);
+  });
+
+  it('空 content 数组 → true', () => {
+    expect(isCallToolResult({ content: [] })).toBe(true);
+  });
+
+  it('含 isError 的合法结构 → true', () => {
+    expect(isCallToolResult({ content: [{ type: 'text', text: 'err' }], isError: true })).toBe(true);
+  });
+
+  it('无 content 字段 → false', () => {
+    expect(isCallToolResult({ id: 'abc123' })).toBe(false);
+  });
+
+  it('content 不是数组 → false', () => {
+    expect(isCallToolResult({ content: '文章内容' })).toBe(false);
+  });
+
+  it('content 元素无 type 字段 → false（防业务对象误判）', () => {
+    expect(isCallToolResult({ content: [{ from: 'user', text: 'hi' }] })).toBe(false);
+  });
+
+  it('content 元素 type 不合法 → false', () => {
+    expect(isCallToolResult({ content: [{ type: 'paragraph', text: 'x' }] })).toBe(false);
+  });
+
+  it('null → false', () => {
+    expect(isCallToolResult(null)).toBe(false);
+  });
+
+  it('数组 → false', () => {
+    expect(isCallToolResult([{ type: 'text', text: 'x' }])).toBe(false);
+  });
+
+  it('原始类型 → false', () => {
+    expect(isCallToolResult(42)).toBe(false);
+    expect(isCallToolResult('hello')).toBe(false);
+  });
+});
+
+describe('normalizeToCallToolResult', () => {
+  it('原始对象被完整包装为 text content（不截断）', () => {
+    const largeObj = { data: 'x'.repeat(10000), id: 'abc' };
+    const result = normalizeToCallToolResult(largeObj) as any;
+    expect(result.content[0].text).toBe(JSON.stringify(largeObj));
+    expect(result.content[0].text.length).toBeGreaterThan(10000);
+    expect(result.isError).toBe(false);
+  });
+
+  it('字符串直接作为 text 不二次序列化', () => {
+    const result = normalizeToCallToolResult('操作成功');
+    expect(result).toEqual({
+      content: [{ type: 'text', text: '操作成功' }],
+      isError: false,
+    });
+  });
+
+  it('数字被完整序列化', () => {
+    expect(normalizeToCallToolResult(42)).toEqual({
+      content: [{ type: 'text', text: '42' }],
+      isError: false,
+    });
+  });
+
+  it('已是合法 CallToolResult 则直接透传（同引用）', () => {
+    const original = { content: [{ type: 'text', text: 'hello' }], isError: false };
+    expect(normalizeToCallToolResult(original)).toBe(original);
+  });
+
+  it('业务对象含 content 数组但非 MCP 格式 → 被包装', () => {
+    const biz = { content: [{ from: 'user', message: 'hi' }], total: 1 };
+    const result = normalizeToCallToolResult(biz);
+    expect(result).toEqual({
+      content: [{ type: 'text', text: JSON.stringify(biz) }],
+      isError: false,
+    });
+  });
+
+  it('null 被包装为 "null"', () => {
+    expect(normalizeToCallToolResult(null)).toEqual({
+      content: [{ type: 'text', text: 'null' }],
+      isError: false,
+    });
+  });
+
+  it('undefined 被包装为字符串', () => {
+    const result = normalizeToCallToolResult(undefined) as any;
+    expect(result.content[0].text).toBe('undefined');
+  });
+});
+
+describe('patchModelContextEventSupport callTool normalization (Chrome 146+)', () => {
+  let originalNavigator: any;
+
+  beforeEach(() => {
+    clearRegistry();
+    originalNavigator = globalThis.navigator;
+  });
+
+  afterEach(() => {
+    clearRegistry();
+    Object.defineProperty(globalThis, 'navigator', {
+      value: originalNavigator,
+      configurable: true,
+      writable: true,
+    });
+  });
+
+  it('Chrome 原生 executeTool 返回原始对象 JSON → callTool 返回完整规范化结果', async () => {
+    const mockExecuteTool = vi.fn().mockResolvedValue('{"id":"shape-1","points":[1,2,3]}');
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        modelContext: { registerTool: vi.fn() },
+        modelContextTesting: {
+          listTools: () => [],
+          executeTool: mockExecuteTool,
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    patchModelContextEventSupport();
+    const mc = (navigator as any).modelContext;
+    const result = await mc.callTool({ name: 'drawCircle', arguments: { cx: 100 } });
+
+    expect(result).toEqual({
+      content: [{ type: 'text', text: '{"id":"shape-1","points":[1,2,3]}' }],
+      isError: false,
+    });
+    expect(mockExecuteTool).toHaveBeenCalledWith('drawCircle', '{"cx":100}');
+  });
+
+  it('大体积返回结果不被截断', async () => {
+    const bigPayload = JSON.stringify({ data: 'x'.repeat(50000) });
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        modelContext: { registerTool: vi.fn() },
+        modelContextTesting: {
+          listTools: () => [],
+          executeTool: vi.fn().mockResolvedValue(bigPayload),
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    patchModelContextEventSupport();
+    const result = await (navigator as any).modelContext.callTool({ name: 'tool', arguments: {} });
+
+    expect(result.content[0].text).toBe(bigPayload);
+    expect(result.content[0].text.length).toBe(bigPayload.length);
+  });
+
+  it('executeTool 返回已规范化的 CallToolResult JSON → 直接透传不重复包装', async () => {
+    const normalized = JSON.stringify({ content: [{ type: 'text', text: 'done' }], isError: false });
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        modelContext: { registerTool: vi.fn() },
+        modelContextTesting: {
+          listTools: () => [],
+          executeTool: vi.fn().mockResolvedValue(normalized),
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    patchModelContextEventSupport();
+    const result = await (navigator as any).modelContext.callTool({ name: 'tool', arguments: {} });
+
+    expect(result).toEqual({ content: [{ type: 'text', text: 'done' }], isError: false });
+  });
+
+  it('executeTool 返回 null → 返回导航中断错误', async () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        modelContext: { registerTool: vi.fn() },
+        modelContextTesting: {
+          listTools: () => [],
+          executeTool: vi.fn().mockResolvedValue(null),
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+
+    patchModelContextEventSupport();
+    const result = await (navigator as any).modelContext.callTool({ name: 'tool', arguments: {} });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('navigation');
+  });
+});
