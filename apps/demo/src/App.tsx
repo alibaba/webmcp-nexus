@@ -7,6 +7,7 @@ import { publishNavigate } from './tools/navigation-bridge';
 import CanvasPage from './pages/CanvasPage';
 import TodosPage from './pages/TodosPage';
 import EditorPage from './pages/EditorPage';
+import FormPage from './pages/FormPage';
 import DebugPanel from './components/DebugPanel';
 
 function NavigateBridge() {
@@ -51,6 +52,9 @@ function Shell() {
               <NavLink to="/editor" className={({ isActive }) => `tab-btn ${isActive ? 'is-active' : ''}`}>
                 编辑器
               </NavLink>
+              <NavLink to="/form" className={({ isActive }) => `tab-btn ${isActive ? 'is-active' : ''}`}>
+                表单
+              </NavLink>
             </nav>
             <button
               type="button"
@@ -70,6 +74,7 @@ function Shell() {
               <Route path="/" element={<CanvasPage />} />
               <Route path="/todos" element={<TodosPage />} />
               <Route path="/editor" element={<EditorPage />} />
+              <Route path="/form" element={<FormPage />} />
             </Routes>
           </main>
           <DebugPanel open={debugOpen} onToggle={toggleDebug} />
