@@ -92,10 +92,19 @@ export function transformCode(
   // 将注入代码插入到第一个注册调用之前
   const firstCall = result.registrationCalls.sort((a, b) => a.start - b.start)[0];
 
+  // 处理 `export default withWebMcpTools(...)` 场景：
+  // 注入点必须在 `export default` 之前，否则会破坏导出语句。
+  let insertPos = firstCall.start;
+  const textBefore = code.slice(0, firstCall.start);
+  const exportDefaultMatch = textBefore.match(/(export\s+default\s+)$/);
+  if (exportDefaultMatch) {
+    insertPos = firstCall.start - exportDefaultMatch[1].length;
+  }
+
   const injectionBlock =
     '\n// [webmcp-nexus-core] 构建时注入的 schema 元数据\n' + injections.join('\n') + '\n';
 
-  const newCode = code.slice(0, firstCall.start) + injectionBlock + code.slice(firstCall.start);
+  const newCode = code.slice(0, insertPos) + injectionBlock + code.slice(insertPos);
 
   return { code: newCode, transformed: true };
 }
