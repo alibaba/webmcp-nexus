@@ -255,6 +255,11 @@ flowchart LR
 <script src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@latest/dist/browser/embed.js"></script>
 ```
 
+> **国内镜像**：如果 jsDelivr CDN 访问不畅，可使用 npmmirror 替代：
+> ```html
+> <script src="https://registry.npmmirror.com/@mcp-b/webmcp-local-relay/latest/files/dist/browser/embed.js"></script>
+> ```
+
 该脚本会自动注入隐藏 iframe，扫描 `navigator.modelContext`（即 WebMCP Nexus SDK 注册的全部工具）并建立到本机 relay 的 WebSocket 通道。**业务代码与 SDK 调用方式完全无需改动**。
 
 > 可选属性：`data-relay-port="9444"` 指定端口（默认 9333）、`data-request-timeout="120000"` 调整请求超时（默认 60000ms）。
