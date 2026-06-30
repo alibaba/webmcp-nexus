@@ -255,6 +255,11 @@ Add a single line to the app's entry HTML (e.g. [apps/demo/index.html](apps/demo
 <script src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@latest/dist/browser/embed.js"></script>
 ```
 
+> **Alternative CDN**: You can also use unpkg as a fallback source:
+> ```html
+> <script src="https://unpkg.com/@mcp-b/webmcp-local-relay@latest/dist/browser/embed.js"></script>
+> ```
+
 The script injects a hidden iframe, picks up every tool on `navigator.modelContext` (i.e. everything registered through the WebMCP Nexus SDK), and opens the WebSocket bridge to the local relay. **No changes to your application code or SDK usage are required.**
 
 > Optional attributes: `data-relay-port="9444"` (default `9333`), `data-request-timeout="120000"` (default `60000` ms).
