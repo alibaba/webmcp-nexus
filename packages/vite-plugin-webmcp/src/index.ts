@@ -57,7 +57,8 @@ export function vitePluginWebMcp(options: WebMcpPluginOptions = {}): Plugin {
       if (!/\.[jt]sx?$/.test(cleanId)) return null;
 
       // include 匹配检查
-      const relativePath = nodePath.relative(projectRoot, cleanId);
+      // 统一使用正斜杠，避免 Windows 反斜杠导致 glob 匹配失败
+      const relativePath = nodePath.relative(projectRoot, cleanId).replace(/\\/g, '/');
       const isIncluded = include.some(pattern => {
         const regex = new RegExp(
           '^' +
