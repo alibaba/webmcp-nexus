@@ -422,7 +422,7 @@ function resolveObjectLiteralArg(
   const objLiteral = arg as any; // ObjectLiteralExpression
   const filePath = sourceFile.getFilePath();
   const baseDir = projectRoot ?? process.cwd();
-  const relPath = './' + nodePath.relative(baseDir, filePath).replace(/\.tsx?$/, '');
+  const relPath = './' + nodePath.relative(baseDir, filePath).replace(/\\/g, '/').replace(/\.tsx?$/, '');
 
   for (const prop of objLiteral.getProperties()) {
     // 处理 shorthand property：{ searchInPanel } 等价于 { searchInPanel: searchInPanel }
@@ -616,7 +616,7 @@ function resolveNamespaceImportArg(
   const namespaceName = identifier.getText();
   const baseDir = projectRoot ?? process.cwd();
   const relPath =
-    './' + nodePath.relative(baseDir, targetFile.getFilePath()).replace(/\.tsx?$/, '');
+    './' + nodePath.relative(baseDir, targetFile.getFilePath()).replace(/\\/g, '/').replace(/\.tsx?$/, '');
 
   // 遍历源模块的所有导出声明
   for (const exportedDecl of targetFile.getExportedDeclarations()) {
@@ -729,7 +729,7 @@ function resolveClassComponentArg(
 
   const filePath = sourceFile.getFilePath();
   const baseDir = projectRoot ?? process.cwd();
-  const relPath = './' + nodePath.relative(baseDir, filePath).replace(/\.tsx?$/, '');
+  const relPath = './' + nodePath.relative(baseDir, filePath).replace(/\\/g, '/').replace(/\.tsx?$/, '');
 
   // 遍历 class 成员
   const members = (classDecl as any).getMembers?.() ?? [];
