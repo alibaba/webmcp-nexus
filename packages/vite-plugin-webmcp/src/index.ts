@@ -56,16 +56,17 @@ export function vitePluginWebMcp(options: WebMcpPluginOptions = {}): Plugin {
       const cleanId = id.split('?')[0];
       if (!/\.[jt]sx?$/.test(cleanId)) return null;
 
-      // include 匹配检查
-      // 统一使用正斜杠，避免 Windows 反斜杠导致 glob 匹配失败
+      // include 匹配检查（node:path.relative 在 Windows 上返回反斜杠，而 include 正则仅识别正斜杠）
       const relativePath = nodePath.relative(projectRoot, cleanId).replace(/\\/g, '/');
       const isIncluded = include.some(pattern => {
         const regex = new RegExp(
           '^' +
             pattern
               .replace(/\./g, '\\.')
-              .replace(/\*\*\//g, '(?:.*\\/)?')
-              .replace(/\*/g, '[^/]*') +
+              // 先用占位符暂存 **/，避免后续 * 替换破坏 .* 中的 *
+              .replace(/\*\*\//g, '\x01')
+              .replace(/\*/g, '[^/]*')
+              .replace(/\x01/g, '(?:.*\\/)?') +
             '$',
         );
         return regex.test(relativePath);
