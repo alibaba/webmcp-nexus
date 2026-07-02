@@ -1,6 +1,6 @@
 {
   "name": "webmcp-nexus-core",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Core logic for WebMCP build plugins - TypeScript type extraction and JSON Schema generation",
   "license": "MIT",
   "keywords": [
