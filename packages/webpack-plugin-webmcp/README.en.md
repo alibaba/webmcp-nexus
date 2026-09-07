@@ -30,7 +30,7 @@
 
 `webpack-plugin-webmcp-nexus` is the **Webpack build plugin** for the [WebMCP Nexus](https://github.com/alibaba/webmcp-nexus) toolchain. It auto-injects an `enforce: 'pre'` Loader into `compiler.options.module.rules`, which calls [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core) to statically analyse WebMCP tool functions, infer JSON Schema from their **TypeScript types and JSDoc**, and inject that schema as a `__webmcpSchema` field on the function object.
 
-Used together with [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk): at runtime the SDK reads that field and registers the tools with `navigator.modelContext`, so MCP clients can call them directly.
+Used together with [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk): at runtime the SDK reads that field and registers the tools with `document.modelContext`, so MCP clients can call them directly.
 
 ## Features
 
@@ -43,12 +43,12 @@ Used together with [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nex
 
 ## Why Use It
 
-| Dimension          | Common practice                                    | webpack-plugin-webmcp-nexus                                              |
-| ------------------ | -------------------------------------------------- | ------------------------------------------------------------------------ |
-| Schema generation  | Hand-written JSON Schema                           | **Automatically inferred from TS types**, with editor-time feedback     |
-| Function intrusion | Decorators / wrapper functions                     | **Non-invasive** — functions are left untouched                          |
-| Loader setup       | Manually configure `use` and ordering              | **Auto-injected**, no changes to your existing rules                     |
-| Toolchain coupling | Tightly bound to a runtime SDK                     | Decoupled from [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk); only injects data into the bundle |
+| Dimension          | Common practice                       | webpack-plugin-webmcp-nexus                                                                                            |
+| ------------------ | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Schema generation  | Hand-written JSON Schema              | **Automatically inferred from TS types**, with editor-time feedback                                                    |
+| Function intrusion | Decorators / wrapper functions        | **Non-invasive** — functions are left untouched                                                                        |
+| Loader setup       | Manually configure `use` and ordering | **Auto-injected**, no changes to your existing rules                                                                   |
+| Toolchain coupling | Tightly bound to a runtime SDK        | Decoupled from [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk); only injects data into the bundle |
 
 ## Installation
 
@@ -168,12 +168,12 @@ new WebMcpPlugin({
 
 ## Ecosystem
 
-| Package                                                                                    | Purpose                                                       |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk)                       | Runtime SDK exposing `registerGlobalTools` / `useWebMcpTools` |
-| [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core)                     | Build-time core: TS extraction + JSON Schema generation       |
-| [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus)       | Vite build plugin (if you're on Vite)                         |
-| **`webpack-plugin-webmcp-nexus`** (this package)                                           | Webpack build plugin                                          |
+| Package                                                                              | Purpose                                                       |
+| ------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk)                 | Runtime SDK exposing `registerGlobalTools` / `useWebMcpTools` |
+| [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core)               | Build-time core: TS extraction + JSON Schema generation       |
+| [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus) | Vite build plugin (if you're on Vite)                         |
+| **`webpack-plugin-webmcp-nexus`** (this package)                                     | Webpack build plugin                                          |
 
 ## Links
 

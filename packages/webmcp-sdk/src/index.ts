@@ -2,4 +2,11 @@
 export { registerGlobalTools } from './registerGlobalTools';
 export { useWebMcpTools } from './useWebMcpTools';
 export { withWebMcpTools } from './withWebMcpTools';
-export type { WebMcpToolFn, WebMcpToolSchema, WebMcpAnnotatedFn, WebMcpToolConfig } from './types';
+export type {
+  WebMcpToolFn,
+  WebMcpToolSchema,
+  WebMcpAnnotatedFn,
+  WebMcpToolConfig,
+  WebMcpToolAnnotations,
+  WebMcpToolExecuteOptions,
+} from './types';

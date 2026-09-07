@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act } from '@testing-library/react';
+import { render } from '@testing-library/react';
 import React from 'react';
 import { withWebMcpTools } from '../withWebMcpTools';
 import { clearRegistry, getActiveToolNames } from '../registry';
+import { mirrorNavigatorHostToDocument, stopMirroringNavigatorHost } from './host-helpers';
 
 describe('withWebMcpTools', () => {
   const mockRegisterTool = vi.fn();
@@ -10,6 +11,8 @@ describe('withWebMcpTools', () => {
   let originalNavigator: any;
 
   beforeEach(() => {
+    // 假宿主注入在 navigator 上，委托 getter 让它同时成为 document.modelContext（规范入口）
+    mirrorNavigatorHostToDocument();
     originalNavigator = globalThis.navigator;
     Object.defineProperty(globalThis, 'navigator', {
       value: {
@@ -32,6 +35,7 @@ describe('withWebMcpTools', () => {
       configurable: true,
       writable: true,
     });
+    stopMirroringNavigatorHost();
   });
 
   // --- 辅助 class 组件 ---
@@ -62,7 +66,11 @@ describe('withWebMcpTools', () => {
   (PanelWithField as any).__webmcpFieldSchemas = {
     setFilter: {
       description: '设置筛选条件',
-      inputSchema: { type: 'object', properties: { keyword: { type: 'string' } }, required: ['keyword'] },
+      inputSchema: {
+        type: 'object',
+        properties: { keyword: { type: 'string' } },
+        required: ['keyword'],
+      },
       readOnly: false,
     },
   };
@@ -82,7 +90,7 @@ describe('withWebMcpTools', () => {
       return <div />;
     }
   }
-  (PanelWithBoth.prototype as any).searchItems = function (input: any) {
+  (PanelWithBoth.prototype as any).searchItems = function (_input: any) {
     return this.state.items;
   };
   ((PanelWithBoth.prototype as any).searchItems as any).__webmcpSchema = {

@@ -9,6 +9,17 @@ import {
   unregisterScopedTool,
 } from '../registry';
 import type { WebMcpToolConfig } from '../types';
+import { mirrorNavigatorHostToDocument, stopMirroringNavigatorHost } from './host-helpers';
+
+// 文件级 hook：本文件的假宿主全部注入在 navigator 上（polyfill 2.x 时代的写法），
+// 而 getModelContext() 现在 document 优先。委托 getter 让这些用例走主路径（规范入口）。
+// 文件级 beforeEach 先于 describe 级执行，且 getter 惰性读取，故与后续替换 navigator 兼容。
+beforeEach(() => {
+  mirrorNavigatorHostToDocument();
+});
+afterEach(() => {
+  stopMirroringNavigatorHost();
+});
 
 function makeToolConfig(name: string): WebMcpToolConfig {
   return {
@@ -193,16 +204,18 @@ describe('scoped tool lifecycle', () => {
 
   it('modelContextTesting.listTools 随原生 signal abort 同步移除工具', () => {
     const nativeTools = new Map<string, WebMcpToolConfig>();
-    mockRegisterTool.mockImplementation((tool: WebMcpToolConfig, options?: { signal?: AbortSignal }) => {
-      nativeTools.set(tool.name, tool);
-      options?.signal?.addEventListener(
-        'abort',
-        () => {
-          nativeTools.delete(tool.name);
-        },
-        { once: true },
-      );
-    });
+    mockRegisterTool.mockImplementation(
+      (tool: WebMcpToolConfig, options?: { signal?: AbortSignal }) => {
+        nativeTools.set(tool.name, tool);
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            nativeTools.delete(tool.name);
+          },
+          { once: true },
+        );
+      },
+    );
     Object.defineProperty(globalThis, 'navigator', {
       value: {
         modelContext: {
@@ -242,19 +255,21 @@ describe('scoped tool lifecycle', () => {
 
   it('registerTool 包装器不能吞掉原生重复注册错误导致 signal 未绑定', () => {
     const nativeTools = new Map<string, WebMcpToolConfig>();
-    mockRegisterTool.mockImplementation((tool: WebMcpToolConfig, options?: { signal?: AbortSignal }) => {
-      if (nativeTools.has(tool.name)) {
-        throw new DOMException('Duplicate tool name', 'InvalidStateError');
-      }
-      nativeTools.set(tool.name, tool);
-      options?.signal?.addEventListener(
-        'abort',
-        () => {
-          nativeTools.delete(tool.name);
-        },
-        { once: true },
-      );
-    });
+    mockRegisterTool.mockImplementation(
+      (tool: WebMcpToolConfig, options?: { signal?: AbortSignal }) => {
+        if (nativeTools.has(tool.name)) {
+          throw new DOMException('Duplicate tool name', 'InvalidStateError');
+        }
+        nativeTools.set(tool.name, tool);
+        options?.signal?.addEventListener(
+          'abort',
+          () => {
+            nativeTools.delete(tool.name);
+          },
+          { once: true },
+        );
+      },
+    );
     Object.defineProperty(globalThis, 'navigator', {
       value: {
         modelContext: {
@@ -315,10 +330,9 @@ describe('scoped tool lifecycle', () => {
       scope: 'component',
       scopeId: 'component-a',
     });
-    expect((navigator as any).modelContextTesting.listTools().map((tool: any) => tool.name)).toEqual([
-      'externalTool',
-      'componentTool',
-    ]);
+    expect(
+      (navigator as any).modelContextTesting.listTools().map((tool: any) => tool.name),
+    ).toEqual(['externalTool', 'componentTool']);
 
     unregisterScopedTool('componentTool', {
       scope: 'component',
@@ -326,16 +340,13 @@ describe('scoped tool lifecycle', () => {
     });
 
     expect(nativeTools.has('componentTool')).toBe(true);
-    expect((navigator as any).modelContextTesting.listTools().map((tool: any) => tool.name)).toEqual([
-      'externalTool',
-    ]);
+    expect(
+      (navigator as any).modelContextTesting.listTools().map((tool: any) => tool.name),
+    ).toEqual(['externalTool']);
   });
 });
 
-import {
-  isCallToolResult,
-  normalizeToCallToolResult,
-} from '../registry';
+import { isCallToolResult, normalizeToCallToolResult } from '../registry';
 
 describe('isCallToolResult', () => {
   it('合法 text content → true', () => {
@@ -351,7 +362,9 @@ describe('isCallToolResult', () => {
   });
 
   it('含 isError 的合法结构 → true', () => {
-    expect(isCallToolResult({ content: [{ type: 'text', text: 'err' }], isError: true })).toBe(true);
+    expect(isCallToolResult({ content: [{ type: 'text', text: 'err' }], isError: true })).toBe(
+      true,
+    );
   });
 
   it('无 content 字段 → false', () => {
@@ -499,7 +512,10 @@ describe('patchModelContextEventSupport callTool normalization (Chrome 146+)', (
   });
 
   it('executeTool 返回已规范化的 CallToolResult JSON → 直接透传不重复包装', async () => {
-    const normalized = JSON.stringify({ content: [{ type: 'text', text: 'done' }], isError: false });
+    const normalized = JSON.stringify({
+      content: [{ type: 'text', text: 'done' }],
+      isError: false,
+    });
     Object.defineProperty(globalThis, 'navigator', {
       value: {
         modelContext: { registerTool: vi.fn() },

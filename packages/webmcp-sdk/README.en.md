@@ -36,19 +36,19 @@ It exposes only two APIs — `registerGlobalTools` and `useWebMcpTools` — that
 
 - 🪶 **Minimal API** — just two functions cover every registration case.
 - 🧩 **Three-tier scoping** — global, route-level, and component-level tools follow lifecycles automatically.
-- 🌐 **Cross-browser support** — Chrome 146+ uses the native `navigator.modelContext`; everywhere else, the bundled [`@mcp-b/webmcp-polyfill`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill) is auto-enabled on first registration, transparent to your code.
+- 🌐 **Cross-browser support** — Chrome 149+ uses the native `document.modelContext` (146–149 are entry-bridged by the polyfill); everywhere else, the bundled [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill) is auto-enabled on first registration, transparent to your code. On modern hosts the SDK **does not modify the host object**, preserving the polyfill's WebIDL fidelity invariants.
 - 🔁 **HMR-friendly** — change a tool signature during development and its schema re-registers automatically.
 - 🛡️ **Collision-aware** — built-in scope ownership registry: duplicate names produce a warning instead of a crash, and teardown is strictly scoped.
 - 🤝 **First-class desktop agents** — paired with [`@mcp-b/webmcp-local-relay`](https://www.npmjs.com/package/@mcp-b/webmcp-local-relay), local MCP clients can drive your running web app directly.
 
 ## Why Use It
 
-| Dimension          | Common practice                                       | webmcp-nexus-sdk                                                        |
-| ------------------ | ----------------------------------------------------- | ----------------------------------------------------------------------- |
-| API surface        | Decorators, wrapper functions, explicit schema config | **Two APIs** cover every case                                           |
-| Function intrusion | `defineApi` / `createTool` wrappers                   | **Non-invasive** — the function stays exactly as it was                 |
-| Lifecycle          | Global registration only, manually managed            | **Three-tier scoping** with automatic deregistration on unmount         |
-| Browser support    | Each call site handles availability checks            | SDK ships with a **lazily loaded polyfill**                             |
+| Dimension          | Common practice                                       | webmcp-nexus-sdk                                                          |
+| ------------------ | ----------------------------------------------------- | ------------------------------------------------------------------------- |
+| API surface        | Decorators, wrapper functions, explicit schema config | **Two APIs** cover every case                                             |
+| Function intrusion | `defineApi` / `createTool` wrappers                   | **Non-invasive** — the function stays exactly as it was                   |
+| Lifecycle          | Global registration only, manually managed            | **Three-tier scoping** with automatic deregistration on unmount           |
+| Browser support    | Each call site handles availability checks            | SDK ships with a **lazily loaded polyfill**                               |
 | Type contract      | Hand-written JSON Schema + TS types kept in sync      | With the build plugin, schema is **inferred from TS types** at build time |
 
 ## Installation
@@ -103,7 +103,7 @@ import * as queries from './tools/queries';
 registerGlobalTools(queries);
 ```
 
-The build plugin extracts a JSON Schema from each function's TS types + JSDoc and attaches it to the function object as `__webmcpSchema`; at runtime the SDK reads that field and registers the tools with `navigator.modelContext`.
+The build plugin extracts a JSON Schema from each function's TS types + JSDoc and attaches it to the function object as `__webmcpSchema`; at runtime the SDK reads that field and registers the tools with `document.modelContext`.
 
 ### 3. Route-level / component-level registration
 
@@ -152,16 +152,31 @@ function MyDialog() {
 
 > Full API reference and best practices: see the [main repository README](https://github.com/alibaba/webmcp-nexus#readme).
 
+## Browser Compatibility
+
+The host surface moved from `navigator.modelContext` to the canonical `document.modelContext` (WebMCP draft of 2026-05-27; Chrome 150 deprecated the former). The SDK is **document-first with a navigator fallback** throughout, transparently to your code.
+
+| Environment                    | Behaviour                                                                                                                                                                                                                                |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome 150+                    | Native `document.modelContext`. **The SDK does not modify the host object** (the protocol puts `toolchange` dispatch responsibility on the host)                                                                                         |
+| Chrome 149                     | First Origin Trial release; still `navigator.modelContext`, and polyfill 5.1.0 performs entry bridging automatically                                                                                                                     |
+| Chrome 146–148                 | Flag-only. The SDK keeps the full compatibility layer on this tier (EventTarget backfill, `listTools`/`callTool` synthesis, `toolchange` bridging) to support relay 2.x; 146–147 additionally use the `unregisterTool` teardown fallback |
+| Chrome <146 / Firefox / Safari | `@mcp-b/webmcp-polyfill@5.1.0` is installed automatically on first registration                                                                                                                                                          |
+
+For the full four-tier matrix, the host admission requirements (origin isolation / Permissions Policy `tools`), the three-shape `inputSchema` compatibility notes, and the coexistence constraints with `@mcp-b/global` and `@mcp-b/webmcp-local-relay`, see the repository [README](https://github.com/alibaba/webmcp-nexus#browser-compatibility) and [CHANGELOG](https://github.com/alibaba/webmcp-nexus/blob/main/CHANGELOG.md).
+
+> **Note**: `@mcp-b/global` must not be loaded alongside this SDK — it replaces both the `document` and `navigator` surfaces using value descriptors.
+
 ## Ecosystem
 
 WebMCP Nexus is a monorepo. The packages published to npm:
 
-| Package                                                                                    | Purpose                                          |
-| ------------------------------------------------------------------------------------------ | ------------------------------------------------ |
-| **`webmcp-nexus-sdk`** (this package)                                                      | Runtime SDK with two core APIs                   |
+| Package                                                                                    | Purpose                                            |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------- |
+| **`webmcp-nexus-sdk`** (this package)                                                      | Runtime SDK with two core APIs                     |
 | [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core)                     | Build-time core: TS extraction + Schema generation |
-| [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus)       | Vite build plugin                                |
-| [`webpack-plugin-webmcp-nexus`](https://www.npmjs.com/package/webpack-plugin-webmcp-nexus) | Webpack build plugin                             |
+| [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus)       | Vite build plugin                                  |
+| [`webpack-plugin-webmcp-nexus`](https://www.npmjs.com/package/webpack-plugin-webmcp-nexus) | Webpack build plugin                               |
 
 ## Links
 

@@ -18,24 +18,29 @@ description: 当接入 webmcp-nexus-sdk 的项目中需要新增 WebMCP 工具�
 
 ## 0. 三级约束（TL;DR）
 
-WebMCP 构建插件（Vite/Webpack plugin）通过 ts-morph 从 `registerGlobalTools(...)` / `useWebMcpTools(...)` / `withWebMcpTools(...)` 的调用位置**向上追踪**工具函数的定义，提取 JSDoc 与参数类型，在构建阶段把 `__webmcpSchema`（description / inputSchema / annotations）注入到每个函数对象上。SDK 在运行时读取该字段向 `navigator.modelContext` 注册。
+WebMCP 构建插件（Vite/Webpack plugin）通过 ts-morph 从 `registerGlobalTools(...)` / `useWebMcpTools(...)` / `withWebMcpTools(...)` 的调用位置**向上追踪**工具函数的定义，提取 JSDoc 与参数类型，在构建阶段把 `__webmcpSchema`（description / inputSchema / readOnly / title / untrustedContent / consequential）注入到每个函数对象上。SDK 在运行时读取该字段向 `document.modelContext` 注册。
 
 约束严重度分三级，递减：
 
 ### MUST —— 违反将导致函数无法注册，或 schema 被污染而无法被 LLM 调用
 
-| #   | 约束                                                                                                                                                                                                                                                                  |
-| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M1  | 工具函数必须**可被追踪**。三种可追踪形式：① 作为对象字面量属性传入 `registerGlobalTools({ fn })` / `useWebMcpTools({ fn })`；② 在 `import * as api from './module'` 的 `./module` 里作为**具名导出**（避免 `export default`，否则工具名会被解析成字符串 `"default"`）；③ 作为 class 组件内带 JSDoc 的方法，通过 `withWebMcpTools(MyClass)` 注册 |
-| M2  | 工具函数必须**接受单一对象类型**参数（命名 interface / type alias / 内联对象字面量）。原始类型 / 数组 / `any` / 泛型会让 ts-morph 吐出原型链上的一堆属性（`length`、`charAt`…），schema 被污染，LLM 调用必失败                                                        |
+| #   | 约束                                                                                                                                                                                                                                                                                                                                                                                                           |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M1  | 工具函数必须**可被追踪**。三种可追踪形式：① 作为对象字面量属性传入 `registerGlobalTools({ fn })` / `useWebMcpTools({ fn })`；② 在 `import * as api from './module'` 的 `./module` 里作为**具名导出**（避免 `export default`：`default` 键字符集合法但语义错误，SDK 会直接跳过它）；③ 作为 class 组件内带 JSDoc 的方法，通过 `withWebMcpTools(MyClass)` 注册                                                    |
+| M2  | 工具函数必须**接受单一对象类型**参数（命名 interface / type alias / 内联对象字面量）。原始类型 / 数组 / `any` / 泛型会让 ts-morph 吐出原型链上的一堆属性（`length`、`charAt`…），schema 被污染，LLM 调用必失败                                                                                                                                                                                                 |
+| M3  | **工具名只能用 `[A-Za-z0-9_]`（camelCase），禁用 `.` 与 `-`**。WebMCP 协议本身允许这两个字符，但 `@mcp-b/webmcp-local-relay` 5.x 的 `sanitizeName` 会把它们改写成 `_`，导致 MCP 客户端看到的工具名与注册名不一致（`get-canvas-info` → `get_canvas_info`），Agent 与开发者双向困惑。超过 128 字符、含空格或非 ASCII 字符的名字会被宿主直接拒绝（`InvalidStateError`），且构建插件会**在 `pnpm build` 阶段报错** |
+| M4  | **禁止工具返回 `{ resultType: 'input_required' }`**。relay 5.x 不支持转发 MCP 多轮 elicitation，会直接把它转为错误结果（"Multi-round tool flows require direct McpServer registration"）。需要多轮交互的能力应拆成多个单轮工具                                                                                                                                                                                 |
 
 ### SHOULD —— 违反不阻止注册，但 schema 质量差，LLM 难以理解
 
-| #   | 约束                                                                                                 |
-| --- | ---------------------------------------------------------------------------------------------------- |
-| S1  | 工具函数本身有 `/** 一行描述 */` JSDoc。缺失时 description 为空字符串，LLM 不知道工具用途            |
-| S2  | 参数类型每个字段有 `/** 描述 */` JSDoc。缺失时字段仍进 schema，只是没 description，LLM 不知字段含义  |
-| S3  | 只读工具（查询 / 搜索 / 不改状态）在函数 JSDoc 追加 `@readonly`，宿主 Agent 据此判断是否需要用户确认 |
+| #   | 约束                                                                                                                                                                                                                                               |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| S1  | 工具函数本身有 `/** 一行描述 */` JSDoc。**宿主硬性要求 description 非空**（polyfill 5.x / Chrome 对空描述抛 `InvalidStateError`）；缺失时构建插件会兜底为工具名并告警，但 LLM 仍不知道工具用途，所以必须写                                         |
+| S2  | 参数类型每个字段有 `/** 描述 */` JSDoc。缺失时字段仍进 schema，只是没 description，LLM 不知字段含义                                                                                                                                                |
+| S3  | 只读工具（查询 / 搜索 / 不改状态）在函数 JSDoc 追加 `@readonly`，宿主 Agent 据此判断是否需要用户确认                                                                                                                                               |
+| S4  | 在函数 JSDoc 追加 `@title <短标题>` 提供人类可读的展示名（如 `@title 删除待办`）。缺失时 SDK 回落为工具名；不写则 MCP 客户端的标题栏只能看到 camelCase 函数名                                                                                      |
+| S5  | 返回值含**不可信内容**（用户生成内容、评论、外部网页数据）时追加 `@untrusted` → `annotations.untrustedContentHint`，提示 Agent 对返回值做净化 / 分隔，缓解间接提示注入                                                                             |
+| S6  | 执行会产生**重大且不可逆后果**（下单 / 转账 / 删除数据）时追加 `@consequential` → `annotations.consequentialHint`，让 Agent 与浏览器强制弹用户确认。注意：该 hint 仅原生 Chrome 153+ 生效，`@mcp-b/webmcp-polyfill@5.1.0` 会丢弃它（上游尚未跟进） |
 
 ### MAY —— 风格建议，不影响功能
 
@@ -244,7 +249,9 @@ class MyComponent extends React.Component {
     return { ok: true };
   };
 
-  render() { return <div />; }
+  render() {
+    return <div />;
+  }
 }
 
 export default withWebMcpTools(MyComponent);
@@ -284,13 +291,46 @@ export interface Params {
 
 函数体内、模块头、TODO、实现细节等**非描述性注释位置**，想用 `//` 还是 `/* */` 完全自由，插件不看这些位置。
 
-### 2.4 `@readonly` 判定
+### 2.4 JSDoc 标签判定
 
-| 类型                    | 加 `@readonly`？ |
-| ----------------------- | ---------------- |
-| 查询 / 搜索 / 列表 / 读 | ✅ 加            |
-| 新建 / 修改 / 删 / 写   | ❌ 不加          |
-| 触发副作用的动作        | ❌ 不加          |
+四个标签同构，都写在函数的 `/** */` 块里，均会被构建插件抽取到 `__webmcpSchema`：
+
+| 标签              | 映射到协议字段                     | 何时加                                                                           |
+| ----------------- | ---------------------------------- | -------------------------------------------------------------------------------- |
+| `@readonly`       | `annotations.readOnlyHint`         | 查询 / 搜索 / 列表 / 读取 → ✅ 加；新建 / 修改 / 删除 / 触发副作用 → ❌ 不加     |
+| `@title <短标题>` | `RegisteredTool.title`             | 想给 MCP 客户端一个比 camelCase 函数名更友好的展示名时加（如 `@title 删除待办`） |
+| `@untrusted`      | `annotations.untrustedContentHint` | 返回值含用户生成内容 / 评论 / 外部网页数据时加                                   |
+| `@consequential`  | `annotations.consequentialHint`    | 下单 / 转账 / 删除数据等不可逆操作时加（仅原生 Chrome 153+ 生效）                |
+
+示例：
+
+```ts
+/**
+ * 根据订单号取消订单并退款
+ * @title 取消订单
+ * @consequential
+ */
+export async function cancelOrder(params: { orderId: string }) {
+  /* 业务逻辑 */
+}
+```
+
+### 2.5 执行取消信号（可选）
+
+宿主会以 `{ signal }` 作为 `execute` 的**第二个参数**传入，用于优雅处理用户 / Agent 发起的取消。长时间运行的工具应把它透传给 `fetch()` 等可取消操作：
+
+```ts
+/**
+ * 拉取并汇总远端报表
+ * @readonly
+ */
+export async function fetchReport(params: { url: string }, { signal }: { signal?: AbortSignal }) {
+  const res = await fetch(params.url, { signal });
+  return res.json();
+}
+```
+
+第二个参数是**可选**的：现有单参工具函数零改动即可继续工作。注意 `@mcp-b/webmcp-polyfill@5.1.0` 当前不转发该信号（仅原生 Chrome 提供），所以在 polyfill 环境下 `options` 会是 `undefined` —— 代码里必须做可选处理。
 
 ---
 
@@ -546,7 +586,7 @@ SDK 暴露三个 API，用途严格区分。
 | --------------------- | ---------------- | ---------------------------------------- |
 | `registerGlobalTools` | 应用级，全程存在 | 应用入口文件，整个应用只调用一次         |
 | `useWebMcpTools`      | 组件 / 路由级    | React 函数组件内作为 Hook 调用，自动注销 |
-| `withWebMcpTools`     | 组件级           | React class 组件 `export default` 包裹  |
+| `withWebMcpTools`     | 组件级           | React class 组件 `export default` 包裹   |
 
 ### 5.1 `registerGlobalTools`（应用启动注册）
 
@@ -581,7 +621,7 @@ registerGlobalTools({ getUser, searchUsers }, { searchProducts });
 **要点**：
 
 - 没有 `__webmcpSchema` 字段的函数会被**静默跳过**。排查时先 `grep "__webmcpSchema" dist/`。
-- 仅在浏览器环境且 `navigator.modelContext` 存在时才真正注册；SSR / 无宿主 Agent 环境自动 no-op。
+- 仅在浏览器环境且 `document.modelContext` 存在时才真正注册；SSR / 无宿主 Agent 环境自动 no-op。
 
 ### 5.2 `useWebMcpTools`（组件 / 路由级注册）
 
@@ -664,6 +704,7 @@ function withWebMcpTools<P>(
 **生命周期**：同 `useWebMcpTools` —— 组件挂载注册，卸载自动注销。
 
 **支持的方法形式**：
+
 - 原型方法：`methodName(params: T) { ... }`
 - Class field 箭头函数：`methodName = (params: T) => { ... }`
 
@@ -684,7 +725,9 @@ class OrderPanel extends React.Component {
     return download(this.state.orders, params.format);
   };
 
-  render() { return <div />; }
+  render() {
+    return <div />;
+  }
 }
 
 export default withWebMcpTools(OrderPanel);
@@ -692,6 +735,7 @@ export default withWebMcpTools(OrderPanel);
 ```
 
 **约束**：
+
 - 必须作为最内层 HOC（`connect(withWebMcpTools(Comp))` ✅ / `withWebMcpTools(connect(Comp))` ❌）
 - 不支持匿名内联 class（`withWebMcpTools(class extends Component {...})` ❌）
 - 方法规范同 §2（单一对象参数 + JSDoc）
@@ -723,7 +767,7 @@ export default withWebMcpTools(OrderPanel);
 
 按优先级检查：
 
-1. `navigator.modelContext` 是否存在（需要宿主环境支持）。
+1. `document.modelContext` 是否存在（需要宿主环境支持）。
 2. 构建产物里该函数是否带 `__webmcpSchema`。没有 → 检查 §0 MUST 两条。
 3. `__webmcpSchema.inputSchema.properties` 里是否有 `length` / `charAt` 等垃圾字段 → 违反 M2，参数被写成了原始类型 / 数组。
 4. `__webmcpSchema.description` 为空 → 违反 S1，补函数 JSDoc。
@@ -736,7 +780,7 @@ export default withWebMcpTools(OrderPanel);
 
 **Q3：工具可以抛异常吗？**
 
-可以。异常会被 `navigator.modelContext` 转成工具执行失败反馈给 LLM。但推荐用返回对象 `{ ok: false, error: '...' }` 形式，LLM 更容易理解。
+可以。异常会被 `document.modelContext` 转成工具执行失败反馈给 LLM。但推荐用返回对象 `{ ok: false, error: '...' }` 形式，LLM 更容易理解。
 
 **Q4：返回值有类型约束吗？**
 

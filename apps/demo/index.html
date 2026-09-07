@@ -5,7 +5,12 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>demo</title>
-     <script src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@latest/dist/browser/embed.js"></script>
+    <!-- relay 5.x 只读 document.modelContext（需配合 @mcp-b/webmcp-polyfill 5.x 或原生 Chrome 149+）。
+         钉到 @5 而非 @latest：上游 6.x 可能再次静默 breaking。
+         必须是经典同步 script：embed.js 靠 document.currentScript 读 data-* 属性，
+         加 type="module" / defer / async 会让全部属性静默失效。
+         自托管时必须同时提供同目录的 widget.html，否则 relay fails closed。 -->
+    <script src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@5/dist/browser/embed.js"></script>
   </head>
   <body>
     <div id="root"></div>

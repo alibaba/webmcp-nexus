@@ -30,7 +30,7 @@
 
 `vite-plugin-webmcp-nexus` is the **Vite build plugin** for the [WebMCP Nexus](https://github.com/alibaba/webmcp-nexus) toolchain. It hooks into Vite's `transform` lifecycle and delegates to [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core) to statically analyse WebMCP tool functions, infer JSON Schema from their **TypeScript types and JSDoc**, and inject that schema as a `__webmcpSchema` field on the function object.
 
-Used together with [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk): at runtime the SDK reads that field and registers the tools with `navigator.modelContext`, so MCP clients can call them directly.
+Used together with [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk): at runtime the SDK reads that field and registers the tools with `document.modelContext`, so MCP clients can call them directly.
 
 ## Features
 
@@ -43,12 +43,12 @@ Used together with [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nex
 
 ## Why Use It
 
-| Dimension          | Common practice                            | vite-plugin-webmcp-nexus                                                |
-| ------------------ | ------------------------------------------ | ----------------------------------------------------------------------- |
-| Schema generation  | Hand-written JSON Schema                   | **Automatically inferred from TS types**, with editor-time feedback    |
-| Function intrusion | Decorators / wrapper functions             | **Non-invasive** — functions are left untouched                         |
-| Dev experience     | Manual sync between types and schema      | **HMR rebuilds the schema automatically**                              |
-| Toolchain coupling | Tightly bound to a runtime SDK             | Decoupled from [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk); only injects data into the bundle |
+| Dimension          | Common practice                      | vite-plugin-webmcp-nexus                                                                                               |
+| ------------------ | ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| Schema generation  | Hand-written JSON Schema             | **Automatically inferred from TS types**, with editor-time feedback                                                    |
+| Function intrusion | Decorators / wrapper functions       | **Non-invasive** — functions are left untouched                                                                        |
+| Dev experience     | Manual sync between types and schema | **HMR rebuilds the schema automatically**                                                                              |
+| Toolchain coupling | Tightly bound to a runtime SDK       | Decoupled from [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk); only injects data into the bundle |
 
 ## Installation
 

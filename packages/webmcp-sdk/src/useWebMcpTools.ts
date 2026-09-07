@@ -5,8 +5,11 @@ import {
   unregisterScopedTool,
   notifyToolsChanged,
   patchModelContextEventSupport,
+  isRegistrableToolName,
+  buildToolConfig,
 } from './registry';
 import { ensureModelContextPolyfill } from './polyfill';
+import { isModelContextAvailable } from './model-context';
 import type { WebMcpAnnotatedFn } from './types';
 
 let scopeCounter = 0;
@@ -84,7 +87,7 @@ export function useWebMcpTools(...toolMaps: Record<string, Function>[]): void {
 
   useEffect(() => {
     ensureModelContextPolyfill();
-    if (typeof navigator === 'undefined' || !('modelContext' in navigator)) {
+    if (!isModelContextAvailable()) {
       return;
     }
 
@@ -96,15 +99,17 @@ export function useWebMcpTools(...toolMaps: Record<string, Function>[]): void {
       const schema = (fn as WebMcpAnnotatedFn).__webmcpSchema;
       if (!schema) continue;
 
+      // 名称守卫必须在写入镜像之前：default 键与非法名不得进 activeTools
+      if (!isRegistrableToolName(name)) continue;
+
       registerScopedTool(
-        {
+        buildToolConfig(
           name,
-          description: schema.description,
-          inputSchema: schema.inputSchema,
-          // 通过 ref 间接调用，保证始终执行最新版本的函数
-          execute: async (input: unknown) => toolsRef.current[name](input),
-          annotations: { readOnlyHint: schema.readOnly ?? false },
-        },
+          schema,
+          // 通过 ref 间接调用，保证始终执行最新版本的函数；
+          // 同时透传宿主的第二参（执行取消信号）
+          async (input, options) => toolsRef.current[name](input, options),
+        ),
         { scope: 'component', scopeId: scopeIdRef.current },
       );
 

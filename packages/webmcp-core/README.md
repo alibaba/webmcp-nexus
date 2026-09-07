@@ -32,7 +32,7 @@
 
 1. 使用 [`ts-morph`](https://ts-morph.com/) 静态分析源码中标记为 WebMCP 工具的函数；
 2. 从函数的 **TypeScript 类型 + JSDoc** 反推出符合 [JSON Schema](https://json-schema.org/) 的工具描述；
-3. 生成注入代码，在每个工具函数对象上挂载 `__webmcpSchema` 字段，供运行时 SDK 读取并注册到 `navigator.modelContext`。
+3. 生成注入代码，在每个工具函数对象上挂载 `__webmcpSchema` 字段，供运行时 SDK 读取并注册到 `document.modelContext`。
 
 它本身**不是给最终用户直接使用的包**，而是被 [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus) 与 [`webpack-plugin-webmcp-nexus`](https://www.npmjs.com/package/webpack-plugin-webmcp-nexus) 共享的底层引擎。如果你正在编写**自定义的构建工具集成**（如 Rspack、Rollup、esbuild 插件），可以直接复用这个包。
 
@@ -47,12 +47,12 @@
 
 ## 优势
 
-| 维度       | 业内常见做法                  | webmcp-nexus-core                         |
-| ---------- | ----------------------------- | ----------------------------------------- |
-| Schema 来源 | 手写 JSON Schema 与 TS 类型双源维护 | **基于 TS 类型自动反推**，单一事实源     |
-| 运行时成本 | 装饰器 / 反射 / 包装函数      | **零运行时开销**——所有 schema 构建期注入 |
-| 生态绑定   | 通常与某一打包器深度耦合      | **打包器无关**——核心算法纯函数式可复用 |
-| 类型变更同步 | 需手动维护类型与 schema 一致 | TS 类型即权威源，编辑器即时反馈        |
+| 维度         | 业内常见做法                        | webmcp-nexus-core                        |
+| ------------ | ----------------------------------- | ---------------------------------------- |
+| Schema 来源  | 手写 JSON Schema 与 TS 类型双源维护 | **基于 TS 类型自动反推**，单一事实源     |
+| 运行时成本   | 装饰器 / 反射 / 包装函数            | **零运行时开销**——所有 schema 构建期注入 |
+| 生态绑定     | 通常与某一打包器深度耦合            | **打包器无关**——核心算法纯函数式可复用   |
+| 类型变更同步 | 需手动维护类型与 schema 一致        | TS 类型即权威源，编辑器即时反馈          |
 
 ## 安装
 
@@ -105,22 +105,24 @@ import * as queries from './tools/queries';
 
 // [webmcp-nexus-core] 构建时注入的 schema 元数据
 queries.searchTasks.__webmcpSchema = {
-  "description": "根据关键词搜索任务。",
-  "inputSchema": {
-    "type": "object",
-    "properties": {
-      "query": { "type": "string", "description": "搜索关键词" },
-      "limit": { "type": "number", "description": "返回数量上限（默认 50）" }
+  description: '根据关键词搜索任务。',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      query: { type: 'string', description: '搜索关键词' },
+      limit: { type: 'number', description: '返回数量上限（默认 50）' },
     },
-    "required": ["query"]
+    required: ['query'],
   },
-  "readOnly": true
+  readOnly: true,
 };
 
 registerGlobalTools(queries);
 ```
 
-> 注入的 schema 仅含 `description` / `inputSchema` / `readOnly` 三个字段。运行时由 [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk) 读取并转换为 `navigator.modelContext.registerTool()` 所需的格式（如 `readOnly` → `annotations.readOnlyHint`）。
+> 注入的 schema 含 `description` / `inputSchema` / `readOnly` 三个必选字段，以及 `title` / `untrustedContent` / `consequential` 三个可选字段（分别来自 `@title` / `@untrusted` / `@consequential` JSDoc 标签，仅在有值时写入以避免产物膨胀）。运行时由 [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk) 读取并转换为 `document.modelContext.registerTool()` 所需的格式（如 `readOnly` → `annotations.readOnlyHint`、`title` → `RegisteredTool.title`）。
+>
+> 本包还在**构建期**做两项校验左移（polyfill 5.x / Chrome 的硬性要求，2.x 不校验）：工具名不匹配 `^[A-Za-z0-9_.-]{1,128}$` 时直接报错；`description` 为空时兜底为工具名并告警。这样"产物即合法"，不会到运行时才发现工具根本没注册。
 
 ## API 概览
 
@@ -129,7 +131,7 @@ registerGlobalTools(queries);
 export function transformCode(
   code: string,
   filePath: string,
-  options?: TransformOptions
+  options?: TransformOptions,
 ): TransformResult;
 
 // 底层 API（高级用户）
@@ -137,19 +139,16 @@ export function extractToolsFromFile(
   fileContent: string,
   filePath: string,
   projectRoot?: string,
-  alias?: AliasMap
+  alias?: AliasMap,
 ): ExtractionResult | null;
 
-export function generateSchema(
-  properties: PropertyInfo[],
-  description?: string
-): JsonSchema;
+export function generateSchema(properties: PropertyInfo[], description?: string): JsonSchema;
 
 export function generateSchemaInjectionCode(
   injectionTarget: string,
   description: string,
   properties: PropertyInfo[],
-  readOnly: boolean
+  readOnly: boolean,
 ): string;
 ```
 
@@ -159,12 +158,12 @@ export function generateSchemaInjectionCode(
 
 `webmcp-nexus-core` 是 WebMCP Nexus 工具链的一部分。完整的发布包列表：
 
-| 包                                                                                         | 用途                                                  |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| 包                                                                                         | 用途                                                      |
+| ------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
 | [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk)                       | 运行时 SDK，提供 `registerGlobalTools` / `useWebMcpTools` |
-| **`webmcp-nexus-core`** （本包）                                                            | 构建时核心：TS 类型抽取 + JSON Schema 生成              |
-| [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus)       | Vite 构建插件（基于本包）                              |
-| [`webpack-plugin-webmcp-nexus`](https://www.npmjs.com/package/webpack-plugin-webmcp-nexus) | Webpack 构建插件（基于本包）                           |
+| **`webmcp-nexus-core`** （本包）                                                           | 构建时核心：TS 类型抽取 + JSON Schema 生成                |
+| [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus)       | Vite 构建插件（基于本包）                                 |
+| [`webpack-plugin-webmcp-nexus`](https://www.npmjs.com/package/webpack-plugin-webmcp-nexus) | Webpack 构建插件（基于本包）                              |
 
 ## 相关链接
 

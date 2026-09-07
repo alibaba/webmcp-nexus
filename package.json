@@ -2,6 +2,7 @@
   "name": "webmcp-nexus",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.12.1",
   "scripts": {
     "dev": "pnpm --filter webmcp-nexus-demo dev",
     "dev:webpack": "pnpm --filter webmcp-nexus-demo dev:webpack",
@@ -16,6 +17,8 @@
     "test": "pnpm -r run test",
     "test:watch": "vitest",
     "clean": "pnpm -r run clean",
+    "changelog": "node scripts/changelog.mjs --write",
+    "changelog:preview": "node scripts/changelog.mjs",
     "release": "bash scripts/publish.sh"
   },
   "devDependencies": {

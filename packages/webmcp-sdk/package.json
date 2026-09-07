@@ -32,6 +32,16 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./testing": {
+      "import": {
+        "types": "./dist/testing.d.ts",
+        "default": "./dist/testing.js"
+      },
+      "require": {
+        "types": "./dist/testing.d.cts",
+        "default": "./dist/testing.cjs"
+      }
     }
   },
   "files": [
@@ -44,7 +54,8 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@mcp-b/webmcp-polyfill": "^2.3.2"
+    "@mcp-b/webmcp-polyfill": "^5.1.0",
+    "@mcp-b/webmcp-types": "5.1.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"

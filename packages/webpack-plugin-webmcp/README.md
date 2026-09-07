@@ -30,7 +30,7 @@
 
 `webpack-plugin-webmcp-nexus` 是 [WebMCP Nexus](https://github.com/alibaba/webmcp-nexus) 工具链的 **Webpack 构建插件**。它会自动向 Webpack 的 `module.rules` 注入一个 `enforce: 'pre'` 的 Loader，调用 [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core) 静态分析源码中的 WebMCP 工具函数，从 **TypeScript 类型 + JSDoc** 反推 JSON Schema，并将其作为 `__webmcpSchema` 字段注入到函数对象上。
 
-配合 [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk) 使用：在运行时，SDK 会读取该字段并向 `navigator.modelContext` 完成注册，让你的工具被 MCP 客户端直接调用。
+配合 [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk) 使用：在运行时，SDK 会读取该字段并向 `document.modelContext` 完成注册，让你的工具被 MCP 客户端直接调用。
 
 ## 核心特性
 
@@ -43,12 +43,12 @@
 
 ## 优势
 
-| 维度       | 业内常见做法                  | webpack-plugin-webmcp-nexus                              |
-| ---------- | ----------------------------- | -------------------------------------------------------- |
-| Schema 生成 | 手写 JSON Schema              | **TS 类型自动反推**，编辑器即时反馈                      |
-| 函数侵入度 | 装饰器 / 包装函数             | **零侵入**——保持函数原样                                |
-| Loader 配置 | 需手动配置 use 与顺序         | **自动注入**，无需修改现有 rules                          |
-| 工具链耦合 | 通常与 SDK 强绑定             | 与 [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk) 解耦，仅在产物注入数据 |
+| 维度        | 业内常见做法          | webpack-plugin-webmcp-nexus                                                                    |
+| ----------- | --------------------- | ---------------------------------------------------------------------------------------------- |
+| Schema 生成 | 手写 JSON Schema      | **TS 类型自动反推**，编辑器即时反馈                                                            |
+| 函数侵入度  | 装饰器 / 包装函数     | **零侵入**——保持函数原样                                                                       |
+| Loader 配置 | 需手动配置 use 与顺序 | **自动注入**，无需修改现有 rules                                                               |
+| 工具链耦合  | 通常与 SDK 强绑定     | 与 [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk) 解耦，仅在产物注入数据 |
 
 ## 安装
 
@@ -168,12 +168,12 @@ new WebMcpPlugin({
 
 ## 生态包
 
-| 包                                                                                         | 用途                                                  |
-| ------------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk)                       | 运行时 SDK，提供 `registerGlobalTools` / `useWebMcpTools` |
-| [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core)                     | 构建时核心：TS 类型抽取 + JSON Schema 生成           |
-| [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus)       | Vite 构建插件（如果你使用 Vite）                       |
-| **`webpack-plugin-webmcp-nexus`** （本包）                                                  | Webpack 构建插件                                       |
+| 包                                                                                   | 用途                                                      |
+| ------------------------------------------------------------------------------------ | --------------------------------------------------------- |
+| [`webmcp-nexus-sdk`](https://www.npmjs.com/package/webmcp-nexus-sdk)                 | 运行时 SDK，提供 `registerGlobalTools` / `useWebMcpTools` |
+| [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core)               | 构建时核心：TS 类型抽取 + JSON Schema 生成                |
+| [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus) | Vite 构建插件（如果你使用 Vite）                          |
+| **`webpack-plugin-webmcp-nexus`** （本包）                                           | Webpack 构建插件                                          |
 
 ## 相关链接
 

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useWebMcpTools } from '../useWebMcpTools';
-import { clearRegistry, getActiveToolNames } from '../registry';
+import { getActiveToolNames } from '../registry';
+import { installFakeHost, teardownHost } from './host-helpers';
 
 function makeToolFn(schemaOverrides?: Record<string, unknown>) {
   const fn = async (input: any) => input;
@@ -13,35 +14,25 @@ function makeToolFn(schemaOverrides?: Record<string, unknown>) {
   return fn;
 }
 
+/** widget 推送的 targetOrigin：relay 的 widget 是 blob iframe、与宿主同源，不用 '*' */
+const WIDGET_TARGET_ORIGIN = 'http://localhost:3000';
+
 describe('useWebMcpTools', () => {
   const mockRegisterTool = vi.fn();
   const mockUnregisterTool = vi.fn();
-  let originalNavigator: any;
 
   beforeEach(() => {
-    originalNavigator = globalThis.navigator;
-    Object.defineProperty(globalThis, 'navigator', {
-      value: {
-        modelContext: {
-          registerTool: mockRegisterTool,
-          unregisterTool: mockUnregisterTool,
-        },
-      },
-      configurable: true,
-      writable: true,
+    installFakeHost({
+      registerTool: mockRegisterTool,
+      unregisterTool: mockUnregisterTool,
     });
   });
 
   afterEach(() => {
-    clearRegistry();
     document.body.innerHTML = '';
-    mockRegisterTool.mockClear();
-    mockUnregisterTool.mockClear();
-    Object.defineProperty(globalThis, 'navigator', {
-      value: originalNavigator,
-      configurable: true,
-      writable: true,
-    });
+    mockRegisterTool.mockReset();
+    mockUnregisterTool.mockReset();
+    teardownHost();
   });
 
   it('mount 时注册工具', () => {
@@ -63,15 +54,8 @@ describe('useWebMcpTools', () => {
   });
 
   it('Chrome 148+ 无 unregisterTool 时 unmount 不抛错', () => {
-    Object.defineProperty(globalThis, 'navigator', {
-      value: {
-        modelContext: {
-          registerTool: mockRegisterTool,
-        },
-      },
-      configurable: true,
-      writable: true,
-    });
+    teardownHost();
+    installFakeHost({ registerTool: mockRegisterTool });
     const fn = makeToolFn();
     const { unmount } = renderHook(() => useWebMcpTools({ myTool: fn }));
     expect(() => unmount()).not.toThrow();
@@ -90,19 +74,16 @@ describe('useWebMcpTools', () => {
         { once: true },
       );
     });
-    Object.defineProperty(globalThis, 'navigator', {
+    teardownHost();
+    installFakeHost({ registerTool: mockRegisterTool });
+    Object.defineProperty(navigator, 'modelContextTesting', {
       value: {
-        modelContext: {
-          registerTool: mockRegisterTool,
-        },
-        modelContextTesting: {
-          listTools: () =>
-            Array.from(nativeTools.values()).map(tool => ({
-              name: tool.name,
-              description: tool.description,
-              inputSchema: JSON.stringify(tool.inputSchema),
-            })),
-        },
+        listTools: () =>
+          Array.from(nativeTools.values()).map(tool => ({
+            name: tool.name,
+            description: tool.description,
+            inputSchema: JSON.stringify(tool.inputSchema),
+          })),
       },
       configurable: true,
       writable: true,
@@ -124,30 +105,26 @@ describe('useWebMcpTools', () => {
 
     expect(postMessageSpy).toHaveBeenCalledWith(
       { type: 'webmcp.tools.changed', tools: [] },
-      '*',
+      WIDGET_TARGET_ORIGIN,
     );
+    delete (navigator as any).modelContextTesting;
   });
 
-  it('原生 listTools 未随 signal 同步时，widget 使用 SDK activeTools 推送正确列表', () => {
+  it('宿主 listTools 未随 signal 同步时，widget 靠 ownership 过滤推送正确列表', () => {
     const nativeTools = new Map<string, any>();
     mockRegisterTool.mockImplementation((tool: any) => {
       nativeTools.set(tool.name, tool);
-      // 模拟当前 demo 中观察到的环境：registerTool 接受 options 但未把 signal 绑定到 listTools。
+      // 模拟 Chrome 146/147：registerTool 接受 options 但未把 signal 绑定到工具表
     });
-    Object.defineProperty(globalThis, 'navigator', {
-      value: {
-        modelContext: {
-          registerTool: mockRegisterTool,
-          listTools: () =>
-            Array.from(nativeTools.values()).map(tool => ({
-              name: tool.name,
-              description: tool.description,
-              inputSchema: JSON.stringify(tool.inputSchema),
-            })),
-        },
-      },
-      configurable: true,
-      writable: true,
+    teardownHost();
+    installFakeHost({
+      registerTool: mockRegisterTool,
+      listTools: () =>
+        Array.from(nativeTools.values()).map(tool => ({
+          name: tool.name,
+          description: tool.description,
+          inputSchema: JSON.stringify(tool.inputSchema),
+        })),
     });
     document.body.innerHTML = '<iframe></iframe>';
     const iframe = document.querySelector('iframe');
@@ -164,20 +141,17 @@ describe('useWebMcpTools', () => {
     vi.advanceTimersByTime(100);
     vi.useRealTimers();
 
+    // 宿主仍残留该工具，但它属于 SDK 托管且已卸载 → 必须被 ownership 过滤掉
     expect(nativeTools.has('myTool')).toBe(true);
     expect(getActiveToolNames()).toEqual([]);
     expect(postMessageSpy).toHaveBeenCalledWith(
       { type: 'webmcp.tools.changed', tools: [] },
-      '*',
+      WIDGET_TARGET_ORIGIN,
     );
   });
 
-  it('navigator.modelContext 不存在时静默跳过', () => {
-    Object.defineProperty(globalThis, 'navigator', {
-      value: {},
-      configurable: true,
-      writable: true,
-    });
+  it('document/navigator 都没有 modelContext 时静默跳过', () => {
+    teardownHost();
     const fn = makeToolFn();
     expect(() => {
       renderHook(() => useWebMcpTools({ myTool: fn }));
@@ -305,9 +279,13 @@ describe('useWebMcpTools', () => {
     expect(mockUnregisterTool).toHaveBeenCalledTimes(2);
   });
 
-  it('navigator 未定义时（SSR）静默跳过', () => {
-    const originalNav = globalThis.navigator;
-    delete (globalThis as any).navigator;
+  it('SSR（navigator 未定义）静默跳过', () => {
+    // 先 teardown 移除 beforeEach 装在 document 上的假宿主（否则 getModelContext 仍会从
+    // 规范入口拿到它）；再只 stub navigator —— 连 document 一起 stub 会让
+    // @testing-library/react 无法渲染（renderHook 需要 document.body）。
+    // document 缺失的 SSR 路径由 polyfill.test.ts 与 getModelContext 的用例覆盖。
+    teardownHost();
+    vi.stubGlobal('navigator', undefined);
     try {
       const fn = makeToolFn();
       expect(() => {
@@ -315,11 +293,7 @@ describe('useWebMcpTools', () => {
       }).not.toThrow();
       expect(mockRegisterTool).not.toHaveBeenCalled();
     } finally {
-      Object.defineProperty(globalThis, 'navigator', {
-        value: originalNav,
-        configurable: true,
-        writable: true,
-      });
+      vi.unstubAllGlobals();
     }
   });
 });

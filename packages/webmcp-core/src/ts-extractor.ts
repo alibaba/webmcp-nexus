@@ -35,6 +35,15 @@ export interface ExtractedTool {
   properties: PropertyInfo[];
   /** 是否为只读工具（@readonly 标签） */
   readOnly: boolean;
+  /** 人类可读短标题（@title 标签）→ RegisteredTool.title */
+  title?: string;
+  /** 输出是否含不可信内容（@untrusted 标签）→ annotations.untrustedContentHint */
+  untrustedContent?: boolean;
+  /**
+   * 执行是否产生重大且不可逆的后果（@consequential 标签）→ annotations.consequentialHint。
+   * 仅 Chrome 153+ 原生生效；polyfill 5.1.0 会丢弃该 hint。
+   */
+  consequential?: boolean;
   /** 来源文件路径（用于调试） */
   sourceFile: string;
   /**
@@ -72,7 +81,11 @@ export interface ExtractionResult {
 export type AliasMap = Record<string, string>;
 
 // 需要追踪的注册函数名
-const REGISTRATION_FUNCTIONS = ['registerGlobalTools', 'useWebMcpTools', 'withWebMcpTools'] as const;
+const REGISTRATION_FUNCTIONS = [
+  'registerGlobalTools',
+  'useWebMcpTools',
+  'withWebMcpTools',
+] as const;
 
 const isDebug = () => (process.env.DEBUG ?? '').toLowerCase().includes('webmcp');
 
@@ -208,15 +221,115 @@ export function extractProperties(type: Type, depth: number = 0): PropertyInfo[]
   return properties;
 }
 
+/** JSDoc 派生的工具标记（描述 + 四个标签） */
+interface JsDocFlags {
+  description: string;
+  readOnly: boolean;
+  title?: string;
+  untrustedContent?: boolean;
+  consequential?: boolean;
+}
+
+/** ts-morph 的 JSDoc 节点结构子集（避开 any，也不硬绑 ts-morph 的具体类型） */
+interface JsDocLike {
+  getDescription?(): string | undefined;
+  getTags?(): JsDocTagLike[];
+}
+
+/** ts-morph 的 JSDocTag 节点结构子集 */
+interface JsDocTagLike {
+  getTagName?(): string;
+  getCommentText?(): string | undefined;
+}
+
 /**
- * 从函数节点提取元数据：JSDoc 描述、@readonly 标签、参数类型
+ * 从 JSDoc 节点统一提取描述与全部工具标记。
+ *
+ * 支持的标签：
+ * - `@readonly`      → annotations.readOnlyHint
+ * - `@title <文本>`  → RegisteredTool.title（人类可读短标题，缺省时 SDK 回落为工具名）
+ * - `@untrusted`     → annotations.untrustedContentHint
+ * - `@consequential` → annotations.consequentialHint
+ *
+ * 五个抽取场景（函数声明 / 类方法 / 箭头函数与函数表达式 / 解构绑定 / class field）
+ * 共用本函数，避免多处标签解析漂移。
+ */
+function extractJsDocFlags(jsDoc: JsDocLike | undefined): JsDocFlags {
+  const description: string = jsDoc?.getDescription?.()?.trim() ?? '';
+  const tags: JsDocTagLike[] = jsDoc?.getTags?.() ?? [];
+  const hasTag = (name: string): boolean => tags.some(t => t?.getTagName?.() === name);
+
+  const titleTag = tags.find(t => t?.getTagName?.() === 'title');
+  const title = (titleTag?.getCommentText?.() ?? '').trim();
+
+  return {
+    description,
+    readOnly: hasTag('readonly'),
+    ...(title ? { title } : {}),
+    ...(hasTag('untrusted') ? { untrustedContent: true } : {}),
+    ...(hasTag('consequential') ? { consequential: true } : {}),
+  };
+}
+
+/**
+ * 行内 /** *\/ 注释的回退解析（ts-morph 拿不到 JSDoc 节点时用正则兜底）。
+ * 与 extractJsDocFlags 支持同一组标签。
+ */
+function extractJsDocFlagsFromRawText(rawComment: string, description: string): JsDocFlags {
+  const titleMatch = rawComment.match(/@title\b[^\S\n]*([^\n@]*)/);
+  const title = (titleMatch?.[1] ?? '').trim();
+
+  return {
+    description,
+    readOnly: /@readonly\b/.test(rawComment),
+    ...(title ? { title } : {}),
+    ...(/@untrusted\b/.test(rawComment) ? { untrustedContent: true } : {}),
+    ...(/@consequential\b/.test(rawComment) ? { consequential: true } : {}),
+  };
+}
+
+/**
+ * 把可选标记展开到 ExtractedTool 字面量。
+ * 仅在有值时写入，避免构建产物膨胀（`__webmcpSchema` 会被 JSON.stringify 进注入代码）。
+ */
+function optionalToolFlags(flags: JsDocFlags): {
+  title?: string;
+  untrustedContent?: boolean;
+  consequential?: boolean;
+} {
+  return {
+    ...(flags.title ? { title: flags.title } : {}),
+    ...(flags.untrustedContent ? { untrustedContent: true } : {}),
+    ...(flags.consequential ? { consequential: true } : {}),
+  };
+}
+
+/**
+ * 若节点是 `useCallback(fn, deps)` 调用，返回 `fn`；否则原样返回。
+ *
+ * 必须在**两个**位置解包：对象字面量的值（`{ fn: useCallback(...) }`），以及标识符
+ * 解析到的变量声明初始化器（`{ listTodos: listTodosImpl }` → `const listTodosImpl =
+ * useCallback(...)`）。只处理前者会让重命名形式的工具拿不到 JSDoc（funcNode 停在
+ * CallExpression 上，extractFunctionMetadata 的三个场景全不匹配，描述静默为空）。
+ */
+function unwrapUseCallback(node: Node): Node {
+  if (node.getKind() !== SyntaxKind.CallExpression) return node;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const callExpr = node as any;
+  if (callExpr.getExpression?.().getText?.() !== 'useCallback') return node;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const args: Node[] = callExpr.getArguments?.() ?? [];
+  return args.length > 0 ? args[0] : node;
+}
+
+/**
+ * 从函数节点提取元数据：JSDoc 描述、工具标签、参数类型
  */
 function extractFunctionMetadata(
   node: FunctionDeclaration | ArrowFunction | FunctionExpression | Node,
   _sourceFile: SourceFile,
-): { description: string; readOnly: boolean; properties: PropertyInfo[] } {
-  let description = '';
-  let readOnly = false;
+): JsDocFlags & { properties: PropertyInfo[] } {
+  let flags: JsDocFlags = { description: '', readOnly: false };
   let properties: PropertyInfo[] = [];
 
   // --- 提取 JSDoc ---
@@ -226,10 +339,7 @@ function extractFunctionMetadata(
     const funcDecl = node as FunctionDeclaration;
     const jsDocs = funcDecl.getJsDocs();
     if (jsDocs.length > 0) {
-      description = jsDocs[0].getDescription()?.trim() ?? '';
-      // 检查 @readonly 标签
-      const tags = jsDocs[0].getTags();
-      readOnly = tags.some(tag => tag.getTagName() === 'readonly');
+      flags = extractJsDocFlags(jsDocs[0]);
     }
 
     // 提取第一个参数的类型
@@ -239,7 +349,7 @@ function extractFunctionMetadata(
       properties = extractProperties(paramType);
     }
 
-    return { description, readOnly, properties };
+    return { ...flags, properties };
   }
 
   // 场景 2：class 方法声明（class Foo { method(params) { ... } }）
@@ -247,9 +357,7 @@ function extractFunctionMetadata(
     const methodDecl = node as MethodDeclaration;
     const jsDocs = methodDecl.getJsDocs();
     if (jsDocs.length > 0) {
-      description = jsDocs[0].getDescription()?.trim() ?? '';
-      const tags = jsDocs[0].getTags();
-      readOnly = tags.some(tag => tag.getTagName() === 'readonly');
+      flags = extractJsDocFlags(jsDocs[0]);
     }
 
     const params = methodDecl.getParameters();
@@ -258,7 +366,7 @@ function extractFunctionMetadata(
       properties = extractProperties(paramType);
     }
 
-    return { description, readOnly, properties };
+    return { ...flags, properties };
   }
 
   // 场景 3：箭头函数或函数表达式（const xxx = async (...) => { ... }）
@@ -288,9 +396,7 @@ function extractFunctionMetadata(
       if (varStatement) {
         const jsDocs = (varStatement as any).getJsDocs?.();
         if (jsDocs && jsDocs.length > 0) {
-          description = jsDocs[0].getDescription?.()?.trim() ?? '';
-          const tags = jsDocs[0].getTags?.() ?? [];
-          readOnly = tags.some((tag: any) => tag.getTagName() === 'readonly');
+          flags = extractJsDocFlags(jsDocs[0]);
         }
       }
     }
@@ -302,10 +408,10 @@ function extractFunctionMetadata(
       properties = extractProperties(paramType);
     }
 
-    return { description, readOnly, properties };
+    return { ...flags, properties };
   }
 
-  return { description, readOnly, properties };
+  return { ...flags, properties };
 }
 
 /**
@@ -348,8 +454,7 @@ function extractToolFromBindingElement(
   const propertyNameNode = be.getPropertyNameNode?.();
   const propertyName: string = propertyNameNode ? propertyNameNode.getText() : toolName;
 
-  let description = '';
-  let readOnly = false;
+  let flags: JsDocFlags = { description: '', readOnly: false };
   const objectBindingPattern = bindingElement.getParent();
   const variableDecl = objectBindingPattern?.getParent();
   if (variableDecl && variableDecl.getKind() === SyntaxKind.VariableDeclaration) {
@@ -370,9 +475,7 @@ function extractToolFromBindingElement(
         for (const pdecl of propDecls) {
           const jsDocs = (pdecl as any).getJsDocs?.();
           if (jsDocs && jsDocs.length > 0) {
-            description = jsDocs[0].getDescription?.()?.trim() ?? '';
-            const tags = jsDocs[0].getTags?.() ?? [];
-            readOnly = tags.some((t: any) => t.getTagName() === 'readonly');
+            flags = extractJsDocFlags(jsDocs[0]);
             break;
           }
           // 回退：解析行内 /** */ 注释
@@ -385,8 +488,7 @@ function extractToolFromBindingElement(
               .filter(Boolean)
               .join(' ');
             if (raw) {
-              description = raw;
-              if (/@readonly\b/.test(m[1])) readOnly = true;
+              flags = extractJsDocFlagsFromRawText(m[1], raw);
               break;
             }
           }
@@ -397,9 +499,10 @@ function extractToolFromBindingElement(
 
   return {
     name: toolName,
-    description,
+    description: flags.description,
     properties,
-    readOnly,
+    readOnly: flags.readOnly,
+    ...optionalToolFlags(flags),
     sourceFile: relPath,
     injectionTarget: toolName,
   };
@@ -422,7 +525,12 @@ function resolveObjectLiteralArg(
   const objLiteral = arg as any; // ObjectLiteralExpression
   const filePath = sourceFile.getFilePath();
   const baseDir = projectRoot ?? process.cwd();
-  const relPath = './' + nodePath.relative(baseDir, filePath).replace(/\\/g, '/').replace(/\.tsx?$/, '');
+  const relPath =
+    './' +
+    nodePath
+      .relative(baseDir, filePath)
+      .replace(/\\/g, '/')
+      .replace(/\.tsx?$/, '');
 
   for (const prop of objLiteral.getProperties()) {
     // 处理 shorthand property：{ searchInPanel } 等价于 { searchInPanel: searchInPanel }
@@ -465,19 +573,9 @@ function resolveObjectLiteralArg(
     if (!valueNode) continue;
 
     // 如果 valueNode 是 useCallback 调用，取第一个参数（实际的函数）
-    let funcNode = valueNode;
-    if (valueNode.getKind() === SyntaxKind.CallExpression) {
-      const callExpr = valueNode as any;
-      const callName = callExpr.getExpression().getText();
-      if (callName === 'useCallback') {
-        const args = callExpr.getArguments();
-        if (args.length > 0) {
-          funcNode = args[0];
-        }
-      }
-    }
+    let funcNode = unwrapUseCallback(valueNode);
 
-    // 如果 funcNode 是标识符（引用了 import 的函数），追踪到定义
+    // 如果 funcNode 是标识符（引用了 import 的函数或同文件变量），追踪到定义
     if (funcNode.getKind() === SyntaxKind.Identifier) {
       const symbol = funcNode.getSymbol();
       if (symbol) {
@@ -487,8 +585,10 @@ function resolveObjectLiteralArg(
           if (decl.getKind() === SyntaxKind.FunctionDeclaration) {
             funcNode = decl;
           } else if (decl.getKind() === SyntaxKind.VariableDeclaration) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const init = (decl as any).getInitializer?.();
-            if (init) funcNode = init;
+            // 初始化器可能又是 useCallback(...)，需再解包一次
+            if (init) funcNode = unwrapUseCallback(init);
           }
         }
       }
@@ -516,6 +616,7 @@ function resolveObjectLiteralArg(
       description: metadata.description,
       properties: metadata.properties,
       readOnly: metadata.readOnly,
+      ...optionalToolFlags(metadata),
       sourceFile: relPath,
       injectionTarget,
     });
@@ -616,7 +717,11 @@ function resolveNamespaceImportArg(
   const namespaceName = identifier.getText();
   const baseDir = projectRoot ?? process.cwd();
   const relPath =
-    './' + nodePath.relative(baseDir, targetFile.getFilePath()).replace(/\\/g, '/').replace(/\.tsx?$/, '');
+    './' +
+    nodePath
+      .relative(baseDir, targetFile.getFilePath())
+      .replace(/\\/g, '/')
+      .replace(/\.tsx?$/, '');
 
   // 遍历源模块的所有导出声明
   for (const exportedDecl of targetFile.getExportedDeclarations()) {
@@ -650,6 +755,7 @@ function resolveNamespaceImportArg(
       description: metadata.description,
       properties: metadata.properties,
       readOnly: metadata.readOnly,
+      ...optionalToolFlags(metadata),
       sourceFile: relPath,
       injectionTarget: `${namespaceName}.${exportName}`,
     });
@@ -660,11 +766,19 @@ function resolveNamespaceImportArg(
 
 // React 生命周期方法黑名单，不应被注册为工具
 const REACT_LIFECYCLE_METHODS = new Set([
-  'constructor', 'render',
-  'componentDidMount', 'componentDidUpdate', 'componentWillUnmount',
-  'shouldComponentUpdate', 'getSnapshotBeforeUpdate',
-  'componentDidCatch', 'getDerivedStateFromProps', 'getDerivedStateFromError',
-  'UNSAFE_componentWillMount', 'UNSAFE_componentWillReceiveProps', 'UNSAFE_componentWillUpdate',
+  'constructor',
+  'render',
+  'componentDidMount',
+  'componentDidUpdate',
+  'componentWillUnmount',
+  'shouldComponentUpdate',
+  'getSnapshotBeforeUpdate',
+  'componentDidCatch',
+  'getDerivedStateFromProps',
+  'getDerivedStateFromError',
+  'UNSAFE_componentWillMount',
+  'UNSAFE_componentWillReceiveProps',
+  'UNSAFE_componentWillUpdate',
 ]);
 
 /**
@@ -729,7 +843,12 @@ function resolveClassComponentArg(
 
   const filePath = sourceFile.getFilePath();
   const baseDir = projectRoot ?? process.cwd();
-  const relPath = './' + nodePath.relative(baseDir, filePath).replace(/\\/g, '/').replace(/\.tsx?$/, '');
+  const relPath =
+    './' +
+    nodePath
+      .relative(baseDir, filePath)
+      .replace(/\\/g, '/')
+      .replace(/\.tsx?$/, '');
 
   // 遍历 class 成员
   const members = (classDecl as any).getMembers?.() ?? [];
@@ -751,6 +870,7 @@ function resolveClassComponentArg(
         description: metadata.description,
         properties: metadata.properties,
         readOnly: metadata.readOnly,
+        ...optionalToolFlags(metadata),
         sourceFile: relPath,
         injectionTarget: `${className}.prototype.${name}`,
         memberType: 'prototype',
@@ -767,17 +887,16 @@ function resolveClassComponentArg(
       const initializer = member.getInitializer?.();
       if (!initializer) continue;
       const initKind = initializer.getKind();
-      if (initKind !== SyntaxKind.ArrowFunction && initKind !== SyntaxKind.FunctionExpression) continue;
+      if (initKind !== SyntaxKind.ArrowFunction && initKind !== SyntaxKind.FunctionExpression)
+        continue;
 
       // JSDoc 从 PropertyDeclaration 节点直接提取
-      let description = '';
-      let readOnly = false;
       const jsDocs = member.getJsDocs?.();
-      if (jsDocs && jsDocs.length > 0) {
-        description = jsDocs[0].getDescription?.()?.trim() ?? '';
-        const tags = jsDocs[0].getTags?.() ?? [];
-        readOnly = tags.some((tag: any) => tag.getTagName() === 'readonly');
-      }
+      const flags: JsDocFlags =
+        jsDocs && jsDocs.length > 0
+          ? extractJsDocFlags(jsDocs[0])
+          : { description: '', readOnly: false };
+      const description = flags.description;
 
       // 自动模式：仅提取带 JSDoc 的方法
       if (!explicitMethods && !description) continue;
@@ -795,7 +914,8 @@ function resolveClassComponentArg(
         name,
         description,
         properties,
-        readOnly,
+        readOnly: flags.readOnly,
+        ...optionalToolFlags(flags),
         sourceFile: relPath,
         injectionTarget: `${className}.__webmcpFieldSchemas`,
         memberType: 'field',

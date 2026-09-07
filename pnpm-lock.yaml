@@ -183,8 +183,11 @@ importers:
   packages/webmcp-sdk:
     dependencies:
       '@mcp-b/webmcp-polyfill':
-        specifier: ^2.3.2
-        version: 2.3.2
+        specifier: ^5.1.0
+        version: 5.1.0
+      '@mcp-b/webmcp-types':
+        specifier: 5.1.0
+        version: 5.1.0
     devDependencies:
       '@testing-library/jest-dom':
         specifier: ^6.9.1
@@ -803,9 +806,6 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
-  '@cfworker/json-schema@4.1.1':
-    resolution: {integrity: sha512-gAmrUZSGtKc3AiBL71iNWxDsyUC5uMaKKGdvzYsBoTW/xi42JQHl7eKV2OYzCUqvc+D2RCcf7EXY2iCyFIk6og==}
-
   '@cspotcode/source-map-support@0.8.1':
     resolution: {integrity: sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw==}
     engines: {node: '>=12'}
@@ -1236,12 +1236,21 @@ packages:
   '@leichtgewicht/ip-codec@2.0.5':
     resolution: {integrity: sha512-Vo+PSpZG2/fmgmiNzYK9qWRh8h/CHrwD0mo1h1DzL4yzHNSfWYujGTYsWGreD000gcgmZ7K4Ys6Tx9TxtsKdDw==}
 
-  '@mcp-b/webmcp-polyfill@2.3.2':
-    resolution: {integrity: sha512-kvGmGypnsASUUGLI/NJ2E1eNLhtRkOq+dxaXxv01EKli9C78hb7x1KpIfknSCxpfIufJGE8wzjjIf279pQT/gQ==}
-    engines: {node: '>=18'}
+  '@mcp-b/webmcp-polyfill@5.1.0':
+    resolution: {integrity: sha512-KL09hniFssPY8HBO3qzurWPqm+1JYRwV3wx6x2XSySgo+6BL1XHGsHGIoAO7U9zzigv7TA5keNBoZ+3P1jq18g==}
+    engines: {node: '>=20'}
 
-  '@mcp-b/webmcp-types@2.3.2':
-    resolution: {integrity: sha512-167nu2e5qIh8BcKvFp4dUzaeyO1+S+eMWGUaohjkwnqgc2Gq49Fv+i/Lei19019s1iCfQJ3yjtrzDK0nApivKg==}
+  '@mcp-b/webmcp-types@5.1.0':
+    resolution: {integrity: sha512-twOKDUr7al60K890HvRcNvoHSfQ2rnGeKJiQs6eUr+Leg+LQ6K+yz3F4K70jykMK1a09ZIgYb3Oc7mAypuKPig==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/core@2.0.0':
+    resolution: {integrity: sha512-pJCEwGG7Lfr/+PQp9ZTwKXNeO5wzbfKL7H3MYpCorM4oFBoQrdjnBgEoqG+RjhsvS1FKrDbKux+M1HhlnGWqcA==}
+    engines: {node: '>=20'}
+
+  '@modelcontextprotocol/server@2.0.0':
+    resolution: {integrity: sha512-YhHWdHfpFMQfd0prsEnxKeS3Qz3ytIGmsS0sth4KDjnacIT7hxk6hXHkJ9KysxlkvTM+WZAtQbbcUhdoP4Hvtw==}
+    engines: {node: '>=20'}
 
   '@napi-rs/wasm-runtime@1.1.4':
     resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
@@ -5195,8 +5204,6 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
-  '@cfworker/json-schema@4.1.1': {}
-
   '@cspotcode/source-map-support@0.8.1':
     dependencies:
       '@jridgewell/trace-mapping': 0.3.9
@@ -5557,13 +5564,23 @@ snapshots:
 
   '@leichtgewicht/ip-codec@2.0.5': {}
 
-  '@mcp-b/webmcp-polyfill@2.3.2':
+  '@mcp-b/webmcp-polyfill@5.1.0':
     dependencies:
-      '@cfworker/json-schema': 4.1.1
-      '@mcp-b/webmcp-types': 2.3.2
+      '@mcp-b/webmcp-types': 5.1.0
       '@standard-schema/spec': 1.1.0
 
-  '@mcp-b/webmcp-types@2.3.2': {}
+  '@mcp-b/webmcp-types@5.1.0':
+    dependencies:
+      '@modelcontextprotocol/server': 2.0.0
+
+  '@modelcontextprotocol/core@2.0.0':
+    dependencies:
+      zod: 4.4.3
+
+  '@modelcontextprotocol/server@2.0.0':
+    dependencies:
+      '@modelcontextprotocol/core': 2.0.0
+      zod: 4.4.3
 
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:

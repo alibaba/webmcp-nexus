@@ -1,5 +1,18 @@
 import { extractToolsFromFile, type AliasMap } from './ts-extractor';
-import { generateSchemaInjectionCode, generateFieldSchemasInjectionCode } from './schema-generator';
+import {
+  generateSchemaInjectionCode,
+  generateFieldSchemasInjectionCode,
+  type PropertyInfo,
+  type ToolSchemaExtras,
+} from './schema-generator';
+
+/** class field 工具条目：基础元数据 + JSDoc 标签派生的可选协议字段 */
+type FieldToolEntry = {
+  name: string;
+  description: string;
+  properties: PropertyInfo[];
+  readOnly: boolean;
+} & ToolSchemaExtras;
 
 export interface TransformOptions {
   projectRoot?: string;
@@ -34,7 +47,11 @@ export function transformCode(
   options: TransformOptions = {},
 ): TransformResult {
   // 快速检测：文件中是否包含注册调用
-  if (!code.includes('registerGlobalTools') && !code.includes('useWebMcpTools') && !code.includes('withWebMcpTools')) {
+  if (
+    !code.includes('registerGlobalTools') &&
+    !code.includes('useWebMcpTools') &&
+    !code.includes('withWebMcpTools')
+  ) {
     return { code, transformed: false };
   }
 
@@ -61,12 +78,18 @@ export function transformCode(
       tool.description,
       tool.properties,
       tool.readOnly,
+      {
+        toolName: tool.name,
+        ...(tool.title ? { title: tool.title } : {}),
+        ...(tool.untrustedContent ? { untrustedContent: true } : {}),
+        ...(tool.consequential ? { consequential: true } : {}),
+      },
     );
     injections.push(injectionCode);
   }
 
   // Class field 箭头函数：按 className 分组后聚合注入 __webmcpFieldSchemas
-  const fieldToolsByClass = new Map<string, Array<{ name: string; description: string; properties: typeof result.tools[0]['properties']; readOnly: boolean }>>();
+  const fieldToolsByClass = new Map<string, FieldToolEntry[]>();
   for (const tool of result.tools) {
     if (tool.memberType !== 'field') continue;
     // injectionTarget 格式为 "ClassName.__webmcpFieldSchemas"
@@ -79,6 +102,9 @@ export function transformCode(
       description: tool.description,
       properties: tool.properties,
       readOnly: tool.readOnly,
+      ...(tool.title ? { title: tool.title } : {}),
+      ...(tool.untrustedContent ? { untrustedContent: true } : {}),
+      ...(tool.consequential ? { consequential: true } : {}),
     });
   }
   for (const [className, fieldTools] of fieldToolsByClass) {
