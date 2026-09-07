@@ -104,8 +104,13 @@ git tag 使用 `v` 前缀（`v1.0.0`），两者有意区分。
 <!-- manual:end -->
 
 <!-- auto:start -->
+### 破坏性变更
 
-- 无变更记录
+- **webmcp-sdk**: 适配 document.modelContext 协议并升级 polyfill 至 5.1.0 (568a638)
+
+### 新增
+
+- **webmcp-sdk**: 适配 document.modelContext 协议并升级 polyfill 至 5.1.0 (568a638)
 <!-- auto:end -->
 
 ## 0.1.14 - 2026-07-02
