@@ -196,6 +196,56 @@ describe('withWebMcpTools', () => {
     expect(result).toEqual(['a']);
   });
 
+  it('原型方法收到宿主传入的执行取消信号', async () => {
+    const execute = vi.fn((_input: unknown, options?: { signal?: AbortSignal }) => options?.signal);
+    class Panel extends React.Component {
+      render() {
+        return <div />;
+      }
+    }
+    (Panel.prototype as any).loadData = execute;
+    ((Panel.prototype as any).loadData as any).__webmcpSchema = {
+      description: '加载数据',
+      inputSchema: { type: 'object', properties: {} },
+    };
+
+    const Wrapped = withWebMcpTools(Panel);
+    render(<Wrapped />);
+    const registeredConfig = mockRegisterTool.mock.calls[0][0];
+    const controller = new AbortController();
+
+    const result = await registeredConfig.execute({}, { signal: controller.signal });
+
+    expect(execute).toHaveBeenCalledWith({}, { signal: controller.signal });
+    expect(result).toBe(controller.signal);
+  });
+
+  it('class field 方法收到宿主传入的执行取消信号', async () => {
+    const execute = vi.fn((_input: unknown, options?: { signal?: AbortSignal }) => options?.signal);
+    class Panel extends React.Component {
+      loadData = execute;
+      render() {
+        return <div />;
+      }
+    }
+    (Panel as any).__webmcpFieldSchemas = {
+      loadData: {
+        description: '加载数据',
+        inputSchema: { type: 'object', properties: {} },
+      },
+    };
+
+    const Wrapped = withWebMcpTools(Panel);
+    render(<Wrapped />);
+    const registeredConfig = mockRegisterTool.mock.calls[0][0];
+    const controller = new AbortController();
+
+    const result = await registeredConfig.execute({}, { signal: controller.signal });
+
+    expect(execute).toHaveBeenCalledWith({}, { signal: controller.signal });
+    expect(result).toBe(controller.signal);
+  });
+
   it('多实例各有独立 scope', () => {
     const Wrapped = withWebMcpTools(PanelWithPrototype);
     const { unmount: unmount1 } = render(<Wrapped />);

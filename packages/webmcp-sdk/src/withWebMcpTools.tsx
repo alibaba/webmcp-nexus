@@ -1,7 +1,7 @@
 // packages/webmcp-sdk/src/withWebMcpTools.tsx
 import React, { useRef, useMemo, useState, useEffect } from 'react';
 import { useWebMcpTools } from './useWebMcpTools';
-import type { WebMcpAnnotatedFn } from './types';
+import type { WebMcpAnnotatedFn, WebMcpToolExecuteOptions } from './types';
 
 /** React 生命周期方法黑名单 */
 const LIFECYCLE_METHODS = new Set([
@@ -80,7 +80,9 @@ export function withWebMcpTools<P extends Record<string, any>>(
         if (!schema) continue;
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const wrapper: any = (input: unknown) => (instanceRef.current as any)?.[name](input);
+        const wrapper: any = (input: unknown, options?: WebMcpToolExecuteOptions) =>
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (instanceRef.current as any)?.[name](input, options);
         wrapper.__webmcpSchema = schema;
         map[name] = wrapper;
       }
@@ -96,7 +98,9 @@ export function withWebMcpTools<P extends Record<string, any>>(
           if (map[name]) continue; // 原型方法优先
 
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const wrapper: any = (input: unknown) => (instanceRef.current as any)?.[name](input);
+          const wrapper: any = (input: unknown, options?: WebMcpToolExecuteOptions) =>
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            (instanceRef.current as any)?.[name](input, options);
           wrapper.__webmcpSchema = schema;
           map[name] = wrapper;
         }
