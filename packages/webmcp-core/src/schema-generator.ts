@@ -73,6 +73,18 @@ export interface WebMcpSchemaPayload {
  */
 export const WEBMCP_TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/u;
 
+/** Fatal validation error that build adapters must not downgrade to a warning. */
+export class InvalidToolNameError extends Error {
+  constructor(name: string, injectionTarget: string) {
+    super(
+      `[webmcp] Invalid tool name "${name}" (at ${injectionTarget}). ` +
+        `WebMCP tool names must be 1-128 characters and contain only ASCII letters, ` +
+        `digits, underscore, hyphen, or period. Rename the function to fix the build.`,
+    );
+    this.name = 'InvalidToolNameError';
+  }
+}
+
 /**
  * 校验工具名，不合法时**构建报错**（而非静默跳过）。
  *
@@ -81,11 +93,7 @@ export const WEBMCP_TOOL_NAME_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/u;
  */
 export function assertValidToolName(name: string, injectionTarget: string): void {
   if (!WEBMCP_TOOL_NAME_PATTERN.test(name)) {
-    throw new Error(
-      `[webmcp] Invalid tool name "${name}" (at ${injectionTarget}). ` +
-        `WebMCP tool names must be 1-128 characters and contain only ASCII letters, ` +
-        `digits, underscore, hyphen, or period. Rename the function to fix the build.`,
-    );
+    throw new InvalidToolNameError(name, injectionTarget);
   }
 }
 

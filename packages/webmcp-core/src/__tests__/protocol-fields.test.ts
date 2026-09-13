@@ -5,6 +5,7 @@ import os from 'node:os';
 import { extractToolsFromFile } from '../ts-extractor';
 import {
   assertValidToolName,
+  InvalidToolNameError,
   generateSchemaInjectionCode,
   generateFieldSchemasInjectionCode,
   resolveToolDescription,
@@ -178,7 +179,7 @@ describe('非法工具名构建报错', () => {
     ['空字符串', ''],
     ['129 字符', 'a'.repeat(129)],
   ])('%s 抛错', (_label, name) => {
-    expect(() => assertValidToolName(name, 'target')).toThrow(/Invalid tool name/);
+    expect(() => assertValidToolName(name, 'target')).toThrow(InvalidToolNameError);
   });
 
   it.each([
