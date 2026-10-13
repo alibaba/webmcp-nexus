@@ -1,6 +1,6 @@
 {
   "name": "webmcp-nexus-sdk",
-  "version": "1.0.0",
+  "version": "1.1.1",
   "description": "SDK for WebMCP Nexus - register and expose browser-side tools for AI agents via Model Context Protocol",
   "license": "MIT",
   "keywords": [
