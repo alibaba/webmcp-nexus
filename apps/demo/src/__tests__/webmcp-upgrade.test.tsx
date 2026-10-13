@@ -119,12 +119,16 @@ describe('规范入口：document.modelContext', () => {
     expect(warnings.filter(w => w.includes('is deprecated'))).toEqual([]);
   });
 
-  it('nexus 不污染宿主实例（polyfill 刻意维持 "ModelContext instance has no own keys"）', async () => {
+  it('nexus 不写**可枚举** own key（polyfill 刻意维持 "ModelContext instance has no own keys"）', async () => {
     registerGlobalTools({ t1: makeTool('t1', () => null) });
     await flushHostTasks();
 
+    // nexus 会装 getTools/executeTool 的形态归一包装，但用 defineHiddenProperty
+    // （enumerable: false），所以可枚举 own key 仍为空
     expect(Object.keys(host())).toEqual([]);
-    // registerTool 的 arity 必须是 1（WebIDL idlharness 会检查）；
+    expect(host().__webmcpNexusGetToolsWrapped).toBe(true);
+    expect(host().__webmcpNexusExecuteToolWrapped).toBe(true);
+    // registerTool 未被包装，arity 仍是 1（WebIDL idlharness 会检查）；
     // 旧实现的包装器会把它变成 2 并吞掉 Promise
     expect(host().registerTool.length).toBe(1);
     expect(host().listTools).toBeUndefined();

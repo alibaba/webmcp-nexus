@@ -130,16 +130,21 @@ describe('ensureModelContextPolyfill — polyfill 自持 context', () => {
     expect((navigator as any).modelContextTesting.listTools()).toEqual([]);
   });
 
-  it('现代宿主判定成立，且 patchModelContextEventSupport 不污染宿主实例', async () => {
+  it('现代宿主判定成立，且 patchModelContextEventSupport 不写**可枚举** own key', async () => {
     registerGlobalTools({ myTool: makeToolFn() });
     await flushHostTasks();
 
     const mc = document.modelContext as any;
     expect(isModernHost(mc)).toBe(true);
-    // polyfill 刻意维持 "Chrome's ModelContext instance has no own keys" 的 WebIDL 保真：
-    // nexus 在现代宿主上零 patch，所以实例仍无可枚举 own key
+    // polyfill 刻意维持 "Chrome's ModelContext instance has no own keys" 的 WebIDL 保真。
+    // nexus 现在会在现代宿主上装 getTools/executeTool 的形态归一包装，但用的是
+    // defineHiddenProperty（enumerable: false），所以可枚举 own key 仍为空。
     expect(Object.keys(mc)).toEqual([]);
-    // registerTool 的 arity 必须是 1（WebIDL idlharness 会检查），旧实现的包装器会变成 2
+    expect({ ...mc }).toEqual({});
+    // 归一层确实装上了（own property 存在，只是不可枚举）
+    expect(mc.__webmcpNexusGetToolsWrapped).toBe(true);
+    expect(mc.__webmcpNexusExecuteToolWrapped).toBe(true);
+    // registerTool 未被包装，arity 仍是 1（WebIDL idlharness 会检查）
     expect(mc.registerTool.length).toBe(1);
     expect(mc.listTools).toBeUndefined();
     expect(mc.callTool).toBeUndefined();

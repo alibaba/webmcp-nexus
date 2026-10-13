@@ -177,7 +177,7 @@ function defaultValueForProp(p: JsonSchemaProperty): string {
   return '';
 }
 
-async function callTool(name: string, argsJson: string): Promise<string> {
+async function callTool(name: string, args: Record<string, unknown>): Promise<string> {
   const mc = getModelContext();
 
   // 规范面：executeTool 要求实参必须是 getTools() 刚返回的真 RegisteredTool
@@ -189,14 +189,23 @@ async function callTool(name: string, argsJson: string): Promise<string> {
     const registered = await mc.getTools();
     const tool = registered.find(candidate => candidate.name === name);
     if (!tool) throw new Error(`Tool not found: ${name}`);
-    const result = await mc.executeTool(tool, argsJson);
+    // 传对象：Chrome 155 起原生 executeTool 只收对象，传字符串会抛
+    // "invalid input object: value is not an object"。string-era 宿主（Chrome 149–154、
+    // polyfill 5.1.0）由 SDK 的归一层负责转换，这里不需要感知宿主代际。
+    const result = await mc.executeTool(tool, args);
     return result === null ? INTERRUPTED_MESSAGE : String(result);
   }
 
-  // 已废弃的 testing 面：按**工具名**调用（与规范面的按**对象**调用是两种签名）
+  // 已废弃的 testing 面：按**工具名 + JSON 字符串**调用（与规范面的按对象调用是两种签名）。
+  // 就地序列化而不 import SDK 的 toArgsJson —— 该 helper 未从 webmcp-nexus-sdk/testing 导出。
+  //
+  // 保留作防御：本 demo 在 main.tsx 模块顶层就调了 registerGlobalTools，patch 必然先跑，
+  // 146–148 档 nexus 已合成 getTools/executeTool，所以上面的 tier-1 条件在**四档全部成立**，
+  // 这个分支实际是死代码。它只在「宿主未被 SDK patch」时才有意义（例如页面从未调用任何
+  // nexus 注册 API 就直接用了本面板）。
   const testing = getModelContextTesting();
   if (testing && typeof testing.executeTool === 'function') {
-    const result = await testing.executeTool(name, argsJson);
+    const result = await testing.executeTool(name, JSON.stringify(args));
     return result === null ? INTERRUPTED_MESSAGE : String(result);
   }
 
@@ -305,7 +314,7 @@ export default function DebugPanel({ open, onToggle }: Props) {
     }));
   };
 
-  const buildArgs = (tool: ToolInfo): { json: string; error?: string } => {
+  const buildArgs = (tool: ToolInfo): { args: Record<string, unknown>; error?: string } => {
     const props = tool.inputSchema?.properties ?? {};
     const required = new Set(tool.inputSchema?.required ?? []);
     const values = formValues[tool.name] ?? {};
@@ -313,14 +322,14 @@ export default function DebugPanel({ open, onToggle }: Props) {
     for (const [key, schema] of Object.entries(props)) {
       const raw = values[key];
       if (raw === undefined || raw === '') {
-        if (required.has(key)) return { json: '', error: `字段 "${key}" 是必填项` };
+        if (required.has(key)) return { args: {}, error: `字段 "${key}" 是必填项` };
         continue;
       }
       const type = getPropType(schema);
       try {
         if (type === 'number' || type === 'integer') {
           const n = Number(raw);
-          if (Number.isNaN(n)) return { json: '', error: `"${key}" 不是合法数字` };
+          if (Number.isNaN(n)) return { args: {}, error: `"${key}" 不是合法数字` };
           out[key] = type === 'integer' ? Math.trunc(n) : n;
         } else if (type === 'boolean') {
           out[key] = raw === 'true';
@@ -330,14 +339,14 @@ export default function DebugPanel({ open, onToggle }: Props) {
           out[key] = raw;
         }
       } catch (e) {
-        return { json: '', error: `"${key}" JSON 解析失败：${(e as Error).message}` };
+        return { args: {}, error: `"${key}" JSON 解析失败：${(e as Error).message}` };
       }
     }
-    return { json: JSON.stringify(out) };
+    return { args: out };
   };
 
   const execute = async (tool: ToolInfo) => {
-    const { json, error } = buildArgs(tool);
+    const { args, error } = buildArgs(tool);
     if (error) {
       setInvocations(prev => ({
         ...prev,
@@ -350,7 +359,7 @@ export default function DebugPanel({ open, onToggle }: Props) {
       [tool.name]: { running: true, result: null, error: null, ranAt: null },
     }));
     try {
-      const result = await callTool(tool.name, json);
+      const result = await callTool(tool.name, args);
       setInvocations(prev => ({
         ...prev,
         [tool.name]: { running: false, result, error: null, ranAt: Date.now() },

@@ -139,3 +139,83 @@ export function makeLegacyHost(overrides: Record<string, unknown> = {}): FakeLeg
     ...overrides,
   };
 }
+
+/** 归一层测试用的 schema 两形态 */
+export const SHAPE_SCHEMA_OBJECT = { type: 'object', properties: { a: { type: 'number' } } };
+export const SHAPE_SCHEMA_STRING = JSON.stringify(SHAPE_SCHEMA_OBJECT);
+
+/**
+ * 归一层测试用的 RegisteredTool 条目。
+ *
+ * 必须带齐 name/description/window/origin 四键：polyfill 的 executeTool 对这四键既做
+ * 存在性检查又做 `tool.window === globalThis.window && tool.origin === 当前 origin` 的值比较，
+ * 缺一即抛。轴二的拷贝形状保真断言也依赖它们。
+ */
+export function makeRegisteredTool(
+  name: string,
+  inputSchema: object | string,
+  options: { sameDocument?: boolean } = {},
+): Record<string, unknown> {
+  const { sameDocument = true } = options;
+  return {
+    name,
+    title: name,
+    description: `${name} description`,
+    inputSchema,
+    // cross-document 用一个不同对象冒充另一个 realm 的 window
+    window: sameDocument ? globalThis.window : ({} as unknown as Window),
+    origin: 'http://localhost:3000',
+  };
+}
+
+/** 归一层测试用宿主：有 getTools + executeTool，故 isModernHost 成立且两个包装器都会装上 */
+export interface FakeShapeHost {
+  registerTool: Mock;
+  getTools: Mock;
+  executeTool: Mock;
+  addEventListener: Mock;
+  removeEventListener: Mock;
+  dispatchEvent: Mock;
+  [key: string]: unknown;
+}
+
+function makeShapeHost(tools: unknown[], overrides: Record<string, unknown>): FakeShapeHost {
+  return {
+    registerTool: vi.fn(async () => {}),
+    getTools: vi.fn(async () => tools),
+    executeTool: vi.fn(async () => '{"ok":true}'),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => true),
+    ...overrides,
+  };
+}
+
+/** object-era 原生宿主（Chrome 155+）：getTools 返回对象 schema，executeTool 收对象 */
+export function makeObjectEraHost(
+  tools: unknown[] = [makeRegisteredTool('myTool', SHAPE_SCHEMA_OBJECT)],
+  overrides: Record<string, unknown> = {},
+): FakeShapeHost {
+  return makeShapeHost(tools, overrides);
+}
+
+/** string-era 原生宿主（Chrome 149–154）：getTools 返回序列化字符串 schema，executeTool 收字符串 */
+export function makeStringEraHost(
+  tools: unknown[] = [makeRegisteredTool('myTool', SHAPE_SCHEMA_STRING)],
+  overrides: Record<string, unknown> = {},
+): FakeShapeHost {
+  return makeShapeHost(tools, overrides);
+}
+
+/**
+ * polyfill 5.1.0 自持宿主：schema 是**对象**，但 executeTool 只吃**字符串**。
+ *
+ * 这一档是「schema 形态不能用来推断入参形态」的反例 —— 传感器必须跳过它，
+ * 由 `__isWebMCPPolyfill` 短路直接判 'string'。
+ */
+export function makePolyfillHost(
+  tools: unknown[] = [makeRegisteredTool('myTool', SHAPE_SCHEMA_OBJECT)],
+  overrides: Record<string, unknown> = {},
+): FakeShapeHost {
+  return makeShapeHost(tools, { __isWebMCPPolyfill: true, ...overrides });
+}

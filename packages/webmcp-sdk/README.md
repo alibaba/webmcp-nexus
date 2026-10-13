@@ -37,7 +37,7 @@
 - 🪶 **极简 API** —— 仅 3 个函数即可完成所有注册场景。
 - 🧩 **三级作用域** —— 全局工具、路由级工具、组件级工具自动随生命周期挂载 / 注销。
 - 🏛️ **Class 组件支持** —— `withWebMcpTools` HOC 让 class 组件方法与函数组件 Hook 享受同等的自动注册体验。
-- 🌐 **跨浏览器兼容** —— Chrome 149+ 使用原生 `document.modelContext`（146–149 由 polyfill 做入口桥接）；其他环境在首次注册时自动启用内置的 [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill)，业务代码完全无感。现代宿主上 SDK **不改写宿主对象**，保持 polyfill 的 WebIDL 保真不变量。
+- 🌐 **跨浏览器兼容** —— Chrome 149+ 使用原生 `document.modelContext`（146–149 由 polyfill 做入口桥接）；其他环境在首次注册时自动启用 [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill)（本包声明为 `dependencies`、由你的打包器解析，**未内联进产物**），业务代码完全无感。SDK 会在宿主的 `getTools` / `executeTool` 上装**不可枚举**的形态归一包装以吸收 Chrome 155 的入参变更，`Object.keys(document.modelContext)` 仍为 `[]`，polyfill 的「实例无 own enumerable keys」WebIDL 保真不变量保持；`registerTool` 一律不包装。
 - 🔁 **HMR 友好** —— 开发阶段修改函数签名后，工具 schema 会自动重新注册。
 - 🛡️ **冲突感知** —— 内置 scope ownership registry，多个 scope 注册同名工具时仅警告不阻断，注销严格隔离。
 - 🤝 **桌面 Agent 直连** —— 配合 [`@mcp-b/webmcp-local-relay`](https://www.npmjs.com/package/@mcp-b/webmcp-local-relay)，桌面端 MCP 客户端可直接调用浏览器中正在运行的 Web 应用。
@@ -49,7 +49,7 @@
 | API 表面   | 装饰器 / 包装函数 / 显式 schema 配置 | **3 个 API** 覆盖全部场景                           |
 | 函数侵入度 | `defineApi` / `createTool` 等包装    | **零侵入**——函数保持原样，原有调用方完全无感        |
 | 生命周期   | 仅支持全局注册，需手动维护           | 全局 / 路由 / 组件 **三级作用域**，组件卸载自动注销 |
-| 浏览器兼容 | 调用方自行判断 + 兜底                | SDK 内置 polyfill **惰性加载**                      |
+| 浏览器兼容 | 调用方自行判断 + 兜底                | SDK 声明依赖 + **惰性安装** polyfill                |
 | 类型契约   | 手写 JSON Schema 与 TS 类型双源维护  | 配合构建插件 **从 TS 类型反推**，单一事实源         |
 
 ## 安装
@@ -212,12 +212,15 @@ export default withWebMcpTools(OrderPanel);
 
 宿主面已从 `navigator.modelContext` 迁移到规范入口 `document.modelContext`（WebMCP 2026-05-27 草案，Chrome 150 已废弃前者）。SDK 全链路 **document 优先、navigator 兜底**，业务代码无感。
 
-| 环境                           | 行为                                                                                                                                                                |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Chrome 150+                    | 原生 `document.modelContext`。**SDK 不改写宿主对象**（协议规定 `toolchange` 派发责任在宿主）                                                                        |
-| Chrome 149                     | Origin Trial 起始版；仍是 `navigator.modelContext`，polyfill 5.1.0 自动做入口桥接                                                                                   |
-| Chrome 146–148                 | flag-only。SDK 在这一档保留全套兼容层（补齐 EventTarget、合成 `listTools`/`callTool`、桥接 `toolchange`）以支持 relay 2.x；146–147 额外走 `unregisterTool` 注销兜底 |
-| Chrome <146 / Firefox / Safari | 首次注册时自动安装 `@mcp-b/webmcp-polyfill@5.1.0`                                                                                                                   |
+| 环境                           | 行为                                                                                                                                                                         |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome 155+                    | 原生 `document.modelContext`。`executeTool` 第二参改为**对象**、same-document `inputSchema` 改为**对象**、`navigator.modelContextTesting` 已移除                             |
+| Chrome 150–154                 | 原生 `document.modelContext`。`executeTool` 第二参仍是 **JSON 字符串**、same-document `inputSchema` 仍返回**序列化字符串**                                                   |
+| Chrome 149                     | Origin Trial 起始版；仍是 `navigator.modelContext`，polyfill 5.1.0 自动做入口桥接                                                                                            |
+| Chrome 146–148                 | flag-only。SDK 在这一档保留全套兼容层（补齐 EventTarget、合成 `listTools`/`callTool`/`getTools`/`executeTool`、桥接 `toolchange`）；146–147 额外走 `unregisterTool` 注销兜底 |
+| Chrome <146 / Firefox / Safari | 首次注册时自动安装 `@mcp-b/webmcp-polyfill@5.1.0`                                                                                                                            |
+
+> 原生档 SDK 会在 `getTools` / `executeTool` 上装**不可枚举**的双轴形态归一包装，吸收 Chrome 155 的入参变更与 relay 6.x 对字符串 `inputSchema` 的不容忍；`Object.keys(document.modelContext)` 仍为 `[]`，`registerTool` 一律不包装（协议规定 `toolchange` 派发责任在宿主，SDK 不代为派发）。
 
 完整的四档矩阵、宿主准入要求（origin isolation / Permissions Policy `tools`）、`inputSchema` 三形态兼容说明、以及与 `@mcp-b/global`、`@mcp-b/webmcp-local-relay` 的共存约束，见仓库根的 [README](https://github.com/alibaba/webmcp-nexus#浏览器兼容) 与 [CHANGELOG](https://github.com/alibaba/webmcp-nexus/blob/main/CHANGELOG.md)。
 

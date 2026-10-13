@@ -241,7 +241,7 @@ flowchart LR
 
 ### Integration steps
 
-> **Prerequisites**: the relay CLI requires **Node 22+** (`npx -y @mcp-b/webmcp-local-relay@5` fails outright on Node 20); the page side needs `@mcp-b/webmcp-polyfill` 5.x (bundled with this SDK) or native Chrome 149+.
+> **Prerequisites**: the relay CLI requires **Node 22+** (`npx -y @mcp-b/webmcp-local-relay@latest` fails outright on Node 20); the page side needs `@mcp-b/webmcp-polyfill` 5.x (declared as a `dependencies` entry of this SDK and resolved by your bundler — **not inlined into the published output**) or native Chrome 149+.
 
 **1. Add the `embed.js` from `@mcp-b/webmcp-local-relay` to your page**
 
@@ -249,18 +249,18 @@ Add a single line to the app's entry HTML (e.g. [apps/demo/index.html](apps/demo
 
 ```html
 <!-- index.html -->
-<script src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@5/dist/browser/embed.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@latest/dist/browser/embed.js"></script>
 ```
 
 The script injects a hidden blob iframe, reads `document.modelContext`, discovers tools via `getTools()` and invokes them via `executeTool()` (re-fetching the descriptor before every call so Chrome never receives a stale object), then opens the WebSocket bridge to the local relay. **No changes to your application code or SDK usage are required.**
 
 Three hard constraints:
 
-- **Pin to `@5`, not `@latest`**: an upstream major bump can silently break you again (relay 5.x only reads `document.modelContext`, while 2.x only read `navigator.modelContext`).
+- **Follow `@latest`, and keep the page side and the local relay server on the same strategy**: nexus only controls the embed's version — the relay **server** version lives in each user's own MCP client config. Pinning any fixed version makes the page side the only fixed end of a mismatch, and an `@5` embed against an `@latest` (6.0.0) server makes every tool invocation fail. The SDK's two-axis normalization layer (see "Browser compatibility") absorbs the input-shape and schema-shape differences between embed 5.x and 6.x, but **keeping the embed and the local relay server on the same major is the consumer's responsibility**.
 - **It must be a classic synchronous `<script>`**: `embed.js` reads its `data-*` attributes through `document.currentScript`. Adding `type="module"` / `defer` / `async` makes **every attribute silently fall back to its default**.
 - **Self-hosting requires `widget.html` in the same directory**: `embed.js` fetches it and builds a blob iframe. **If that fetch fails the relay fails closed** (a single `console.error`, and no tools are reported at all). Cross-origin hosting must allow CORS. If you use a regional mirror, mirror the whole `dist/browser/` directory rather than a single file.
 
-The full set of `data-*` attributes (`embed.js` 5.1.0):
+The full set of `data-*` attributes (`embed.js` 6.0.0):
 
 | Attribute              | Default     | Purpose                                                                                                                          |
 | ---------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------- |
@@ -285,7 +285,7 @@ The full set of `data-*` attributes (`embed.js` 5.1.0):
   "mcpServers": {
     "webmcp-local-relay": {
       "command": "npx",
-      "args": ["-y", "@mcp-b/webmcp-local-relay@5"]
+      "args": ["-y", "@mcp-b/webmcp-local-relay@latest"]
     }
   }
 }
@@ -380,14 +380,19 @@ The WebMCP draft moved the `modelContext` getter from `Navigator` to `Document` 
 
 | Environment                                  | Behaviour                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Chrome 150+ (Origin Trial / flag)            | Native `document.modelContext` is the canonical entry; `navigator.modelContext` is a deprecated alias (one-time warning on first access). **nexus does not modify the host object**                                                                                                                                                                                                                                         |
+| Chrome 155+                                  | Native `document.modelContext` is the canonical entry. `executeTool` now takes an **object** as its second argument (passing a string throws `TypeError: … invalid input object: value is not an object`), same-document `inputSchema` from `getTools()` is now an **object**, and `navigator.modelContextTesting` is gone                                                                                                  |
+| Chrome 150–154 (Origin Trial / flag)         | Native `document.modelContext` is the canonical entry; `navigator.modelContext` is a deprecated alias (one-time warning on first access). `executeTool` still takes a **JSON string** and same-document `inputSchema` still returns the **serialized string**                                                                                                                                                               |
 | Chrome 149                                   | First Origin Trial release; still `navigator.modelContext`, and `@mcp-b/webmcp-polyfill@5.1.0` performs **entry bridging** (the same instance is exposed on document — the native implementation is neither replaced nor wrapped)                                                                                                                                                                                           |
-| Chrome 146–148                               | Flag-only. 146–147 have `unregisterTool` (nexus uses the L2 unregister fallback); it was removed in 148 in favour of `AbortSignal`. nexus keeps the full compatibility layer on this tier (EventTarget backfill, `listTools`/`callTool` synthesis, `toolchange` bridging) and **additionally synthesizes `getTools`/`executeTool` from `modelContextTesting`**, so relay 5.x can discover and invoke tools on this tier too |
+| Chrome 146–148                               | Flag-only. 146–147 have `unregisterTool` (nexus uses the L2 unregister fallback); it was removed in 148 in favour of `AbortSignal`. nexus keeps the full compatibility layer on this tier (EventTarget backfill, `listTools`/`callTool` synthesis, `toolchange` bridging) and **additionally synthesizes `getTools`/`executeTool` from `modelContextTesting`**, so the relay can discover and invoke tools on this tier too |
 | Chrome <146 / Firefox / Safari / legacy Edge | [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill) is installed automatically on first registration; `document.modelContext` is the canonical entry, transparently to the app                                                                                                                                                                                                           |
 
-> **relay 5.x works on every tier**: the polyfill-owned tier and native Chrome 149+ ship `getTools`/`executeTool`; Chrome 146–148 get them synthesized by nexus from `modelContextTesting` (if a 146–148 build lacks `modelContextTesting`, relay invocation gets `NotSupportedError` while in-page registration/invocation still works). relay 2.x still works on the polyfill-owned and 146–148 tiers, but new integrations should use relay 5.x.
+> **nexus does modify the host object on native tiers.** To absorb Chrome 155's input-shape change and relay 6.x's schema guard, the SDK installs **non-enumerable** shape-normalization wrappers on `getTools` / `executeTool` — `Object.keys(document.modelContext)` is still `[]`, so the polyfill's "ModelContext instance has no own enumerable keys" WebIDL fidelity invariant holds. Known deviation: on the polyfill tier `for...in` no longer yields those two methods (`Object.keys`, spread and `instanceof` are unaffected). `registerTool` is never wrapped and its arity stays 1.
 
-> **The shape of `inputSchema` is not tiered by browser version.** The polyfill returns a JSON Schema **object** when it owns the context, while Chrome's **same-document tools still return a serialized string** from 149 onward (the [webmcp#241](https://github.com/webmachinelearning/webmcp/issues/241) object shape rolls out from Chrome 154.0.8013 for cross-document tools first, and the boundary is still moving) — and every tool nexus registers is same-document. The SDK therefore handles all three shapes (**string / object / missing key**) and always feature-detects, never version-sniffs.
+> **Two-axis shape normalization.** Chrome 155 changed the native `executeTool` second argument from a JSON string to an object; relay 6.x followed by sending an object **and dropped its tolerance for string `inputSchema`** — tools with a string schema are discarded at the **discovery** stage (a single `console.warn` of "input schema is malformed"), so the agent sees zero tools, which is more insidious than an execution failure. The SDK therefore normalizes on two axes: **axis 1** converts the `executeTool` argument to whatever the host expects, and **axis 2** converts string `inputSchema` to an object per tool (upstream `webmcp-types` explicitly requires that "Consumers that support both generations must branch on `typeof`").
+>
+> Effect and limits: **on the nexus side, embed 5.x and 6.x can both discover and invoke tools**, and application code may pass either an object or a string without knowing the host generation. Chrome 155+ and the polyfill-owned tier are measured; **the Chrome 149–154 tier is inferred from the upstream type declarations and not verified on a real browser here**. nexus also cannot control whether the embed and the local relay **server** are on the same major (the server version lives in each user's own MCP client config) — keep both sides on `@latest`, and re-verify if relay 7.x introduces a new shape axis. relay 2.x works only on the polyfill-owned and 146–148 tiers; do not use it for new integrations.
+
+> **The shape of `inputSchema` is not cleanly tiered by browser version.** The polyfill returns a JSON Schema **object** when it owns the context; Chrome 149–153 (most of the Origin Trial population) and 154's **same-document tools return the serialized string**; the [webmcp#241](https://github.com/webmachinelearning/webmcp/issues/241) object shape rolled out from Chrome 154.0.8013 for cross-document tools first, and **from Chrome 155 same-document tools return objects too** (measured 20/20) — and every tool nexus registers is same-document. The upstream type is therefore `InputSchema | string`. The SDK handles all three shapes (**string / object / missing key**) and always feature-detects, never version-sniffs.
 
 ### Host admission requirements
 
@@ -415,12 +420,12 @@ See [CHANGELOG.md](./CHANGELOG.md) for the full list. Highlights:
 - **Tool functions may declare a second parameter to receive the execution-cancellation signal**: `async (params, { signal }) => {...}`. Existing single-parameter tools need no change.
 - **Three new JSDoc tags**: `@title <text>`, `@untrusted`, `@consequential` — structurally identical to the existing `@readonly`. `__webmcpSchema` grows from three fields to six.
 - **New build-time validation**: an invalid tool name now fails `pnpm build` outright instead of silently emitting a tool that can never register.
-- The relay's `embed.js` must be upgraded to **5.x** (see the integration steps above).
+- The relay's `embed.js` follows `@latest` (see the integration steps above), and must be on the same strategy as the local relay server.
 
 ## Relationship with other `@mcp-b/` packages
 
 - **`@mcp-b/global` must not be loaded alongside this SDK.** It initializes on import and **replaces** both the `document` and `navigator` surfaces with a `BrowserMcpServer` using value descriptors, which destroys nexus's legacy-host compatibility layer. Pick one.
-- **`@mcp-b/webmcp-local-relay` 5.x** reads only `document.modelContext` and requires only `getTools()` + `executeTool()`. **relay 2.x works only in browsers where the polyfill owns the context (Chrome <146 / Firefox / Safari)** — because the `navigator.modelContextTesting` provided by `installTestingShim` is installed only in that path; on native Chrome the polyfill returns early. Use relay 5.x on Chrome 149+. The relay's "Runtime Compatibility" section lists three supported page runtimes (`@mcp-b/global` / native Chrome / `@mcp-b/webmcp-polyfill`); **nexus is covered by the third**.
+- **`@mcp-b/webmcp-local-relay`** reads only `document.modelContext` and requires only `getTools()` + `executeTool()`. **relay 2.x works only in browsers where the polyfill owns the context (Chrome <146 / Firefox / Safari)** — because the `navigator.modelContextTesting` provided by `installTestingShim` is installed only in that path; on native Chrome the polyfill returns early. Use relay 5.x/6.x for new integrations. The relay's "Runtime Compatibility" section lists three supported page runtimes (`@mcp-b/global` / "current native Chrome with **object-input** `executeTool()`", i.e. Chrome 155+ / `@mcp-b/webmcp-polyfill`), and the upstream docs additionally advise loading the embed from the same major version as the page's runtime. nexus keeps its polyfill at 5.1.0, which is outside that advice; the difference is absorbed by the SDK's **two-axis shape-normalization layer** (see "Browser compatibility") — a **deliberate deviation**, not something the upstream support matrix covers.
 - **`usewebmcp` / `react-webmcp` / `webmcp-ts-sdk`** are the upstream equivalents, positioned differently: nexus's differentiating value is **build-time schema derivation from TS types + JSDoc**, **three-tier scoping**, and the **scope ownership registry** — none of which exist upstream. nexus does not depend on them.
 - **Declarative forms**: polyfill 5.1.0 automatically installs declarative form support (`<form toolname tooldescription toolautosubmit toolparamdescription>`, `SubmitEvent.agentInvoked` / `respondWith()`). Those tools are registered directly into the host by the polyfill and **do not pass through nexus's ownership mirror**, so they appear in `document.modelContext.getTools()` and in the demo's DebugPanel, but not in nexus's widget push. The `toolactivated` / `toolcancel` events on `window` and the CSS `:tool-form-active` / `:tool-submit-active` pseudo-classes are **native-Chrome only**; the polyfill does not emulate them.
 - To support declarative forms, polyfill 5.1.0 rewrites `Element.prototype.attachShadow` and `HTMLFormElement.prototype.submit`. Projects using shadow DOM or custom form-submit logic should evaluate the impact.
@@ -478,7 +483,7 @@ WebMCP Nexus's core APIs (`registerGlobalTools` / `useWebMcpTools`) and build pl
 
 - The WebMCP standard: [webmcp.org](https://webmcp.org) · [W3C WebML CG draft](https://webmachinelearning.github.io/webmcp/) · [Chrome documentation](https://developer.chrome.com/docs/ai/webmcp)
 - Upstream runtime / polyfill: [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill) · [`@mcp-b/webmcp-types@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-types)
-- Local agent bridge: [`@mcp-b/webmcp-local-relay@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-local-relay)
+- Local agent bridge: [`@mcp-b/webmcp-local-relay@6.0.0`](https://www.npmjs.com/package/@mcp-b/webmcp-local-relay)
 - This repository's changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Contributing

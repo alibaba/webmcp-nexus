@@ -241,7 +241,7 @@ flowchart LR
 
 ### 接入步骤
 
-> **前置要求**：relay CLI 的 `engines` 是 **Node 22+**（`npx -y @mcp-b/webmcp-local-relay@5` 在 Node 20 下会直接失败）；页面侧需 `@mcp-b/webmcp-polyfill` 5.x（本 SDK 已内置）或原生 Chrome 149+。
+> **前置要求**：relay CLI 的 `engines` 是 **Node 22+**（`npx -y @mcp-b/webmcp-local-relay@latest` 在 Node 20 下会直接失败）；页面侧需 `@mcp-b/webmcp-polyfill` 5.x（本 SDK 声明为 `dependencies`，由你的打包器解析安装，**并未内联进产物**）或原生 Chrome 149+。
 
 **1. 在页面中引入 `@mcp-b/webmcp-local-relay` 的 `embed.js`**
 
@@ -249,18 +249,18 @@ flowchart LR
 
 ```html
 <!-- index.html -->
-<script src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@5/dist/browser/embed.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mcp-b/webmcp-local-relay@latest/dist/browser/embed.js"></script>
 ```
 
 该脚本会注入一个隐藏的 blob iframe，读 `document.modelContext`，通过 `getTools()` 发现工具、`executeTool()` 调用工具（每次调用前重新拉取 descriptor，避免陈旧对象），并建立到本机 relay 的 WebSocket 通道。**业务代码与 SDK 调用方式完全无需改动**。
 
 三条硬约束：
 
-- **钉到 `@5` 而非 `@latest`**：上游主版本升级可能再次静默 breaking（relay 5.x 就只认 `document.modelContext`，而 2.x 只认 `navigator.modelContext`）。
+- **跟随 `@latest`，且页面侧与本机 relay server 侧必须同策略**：nexus 只控制得了 embed 的版本，relay server 的版本在**每个用户自己的 MCP 客户端配置**里。钉任何固定版本都会让页面侧成为错配关系中唯一固定的那一端 —— `@5` embed × `@latest`(6.0.0) server 的错配就会让全部工具执行失败。SDK 的双轴归一层（见「浏览器兼容」）吸收 embed 5.x/6.x 的入参与 schema 形态差异，但 **embed 与本地 relay server 的大版本一致性由消费方保证**。
 - **必须是经典同步 `<script>`**：`embed.js` 靠 `document.currentScript` 读 `data-*` 属性，加 `type="module"` / `defer` / `async` 会让**全部属性静默回落默认值**。
 - **自托管时必须同时提供同目录的 `widget.html`**：`embed.js` 会 `fetch` 它并构造 blob iframe，**fetch 失败则 relay fails closed**（只有一条 `console.error`，工具完全不上报）。跨源托管需允许 CORS。若使用国内镜像，请镜像整个 `dist/browser/` 目录而非单个文件。
 
-完整的 `data-*` 属性（`embed.js` 5.1.0）：
+完整的 `data-*` 属性（`embed.js` 6.0.0）：
 
 | 属性                   | 默认值      | 用途                                                                                                      |
 | ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------- |
@@ -285,7 +285,7 @@ flowchart LR
   "mcpServers": {
     "webmcp-local-relay": {
       "command": "npx",
-      "args": ["-y", "@mcp-b/webmcp-local-relay@5"]
+      "args": ["-y", "@mcp-b/webmcp-local-relay@latest"]
     }
   }
 }
@@ -378,16 +378,21 @@ Agent 会按 Skill 中规定的流程，自动补齐 JSDoc、调整参数为对�
 
 WebMCP 草案在 2026-05-27 把 `modelContext` getter 从 `Navigator` 移到 `Document`（[webmcp#173](https://github.com/webmachinelearning/webmcp/issues/173) / [#184](https://github.com/webmachinelearning/webmcp/pull/184)），Chrome 150 已废弃 `navigator.modelContext`。SDK 全链路 **document 优先、navigator 兜底**，业务代码无感。
 
-| 环境                                         | 行为                                                                                                                                                                                                                                                                                                   |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Chrome 150+（Origin Trial / flag）           | 原生 `document.modelContext` 为规范入口；`navigator.modelContext` 为已废弃别名（首次访问有一次性 warning）。**nexus 不改写宿主对象**                                                                                                                                                                   |
-| Chrome 149                                   | Origin Trial 起始版；仍是 `navigator.modelContext`，`@mcp-b/webmcp-polyfill@5.1.0` 自动做**入口桥接**（同一实例搬到 document 上，不替换、不包装原生实现）                                                                                                                                              |
-| Chrome 146–148                               | flag-only。146–147 有 `unregisterTool`（nexus 走 L2 注销兜底），148 起移除改用 `AbortSignal`。nexus 在这一档保留全套兼容层（补齐 EventTarget、合成 `listTools`/`callTool`、桥接 `toolchange`），并**额外从 `modelContextTesting` 合成 `getTools`/`executeTool`**，使 relay 5.x 在该档也可发现/调用工具 |
-| Chrome <146 / Firefox / Safari / Edge legacy | 首次注册时自动安装 [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill)；`document.modelContext` 为规范入口，对业务透明                                                                                                                                              |
+| 环境                                         | 行为                                                                                                                                                                                                                                                                                               |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Chrome 155+                                  | 原生 `document.modelContext` 为规范入口。`executeTool` 第二参改为**对象**（传字符串抛 `TypeError: … invalid input object: value is not an object`），`getTools()` 的 same-document `inputSchema` 也改为**对象**，`navigator.modelContextTesting` 已移除                                            |
+| Chrome 150–154（Origin Trial / flag）        | 原生 `document.modelContext` 为规范入口；`navigator.modelContext` 为已废弃别名（首次访问有一次性 warning）。`executeTool` 第二参仍是 **JSON 字符串**，same-document `inputSchema` 仍返回**序列化字符串**                                                                                           |
+| Chrome 149                                   | Origin Trial 起始版；仍是 `navigator.modelContext`，`@mcp-b/webmcp-polyfill@5.1.0` 自动做**入口桥接**（同一实例搬到 document 上，不替换、不包装原生实现）                                                                                                                                          |
+| Chrome 146–148                               | flag-only。146–147 有 `unregisterTool`（nexus 走 L2 注销兜底），148 起移除改用 `AbortSignal`。nexus 在这一档保留全套兼容层（补齐 EventTarget、合成 `listTools`/`callTool`、桥接 `toolchange`），并**额外从 `modelContextTesting` 合成 `getTools`/`executeTool`**，使 relay 在该档也可发现/调用工具 |
+| Chrome <146 / Firefox / Safari / Edge legacy | 首次注册时自动安装 [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill)；`document.modelContext` 为规范入口，对业务透明                                                                                                                                          |
 
-> **relay 5.x 全档可用**：polyfill 自持档与 Chrome 149+ 原生自带 `getTools`/`executeTool`；Chrome 146–148 由 nexus 从 `modelContextTesting` 合成（若该档浏览器不带 `modelContextTesting`，则 relay 调用会拿到 `NotSupportedError`，页面内注册/调用仍可用）。relay 2.x 仍可在 polyfill 自持档与 146–148 档使用，但新接入请直接用 relay 5.x。
+> **nexus 会在原生档改写宿主对象。** 为吸收 Chrome 155 的入参形态变更与 relay 6.x 的 schema 守卫，SDK 在 `getTools` / `executeTool` 上装**不可枚举**的形态归一包装 —— `Object.keys(document.modelContext)` 仍为 `[]`，polyfill 刻意维持的「实例无 own enumerable keys」WebIDL 保真不变量保持。已知偏差：polyfill 档的 `for...in` 不再产出这两个方法（`Object.keys`、spread、`instanceof` 均不受影响）。`registerTool` 一律不包装，arity 仍为 1。
 
-> **`inputSchema` 的形态不按浏览器版本分档**。polyfill 5.x 自持 context 时返回 JSON Schema **对象**；而 Chrome 149 起的 **same-document 工具仍返回序列化字符串**（[webmcp#241](https://github.com/webmachinelearning/webmcp/issues/241) 的对象化自 Chrome 154.0.8013 起 cross-document 先行滚动发布，边界还在上移），而 nexus 注册的全是 same-document 工具。因此 SDK 对 **string / object / 缺键** 三种形态全部兼容，一律特征检测、不做版本嗅探。
+> **双轴形态归一。** Chrome 155 把原生 `executeTool` 第二参从 JSON 字符串改成对象；relay 6.x 随之改传对象，并**删掉了对字符串 `inputSchema` 的容忍度** —— 字符串 schema 的工具在**发现阶段**就被丢弃（`console.warn` 一条 "input schema is malformed"），Agent 侧看到零个工具，比执行失败更隐蔽。SDK 因此做两轴归一：**轴一**按宿主实际期望转换 `executeTool` 入参，**轴二**逐工具把字符串 `inputSchema` 转成对象（上游 `webmcp-types` 明文要求 "Consumers that support both generations must branch on `typeof`"）。
+>
+> 效果与边界：**nexus 侧对 embed 5.x/6.x 均可发现并执行工具**，业务代码传对象或字符串都可以，无需感知宿主代际。其中 Chrome 155+ 与 polyfill 自持档已实测，**Chrome 149–154 档基于上游类型声明推定、未在本机实证**。另外 embed 与本机 relay **server** 的大版本一致性 nexus 控制不了（server 版本在每个用户自己的 MCP 客户端配置里），两侧请同策略跟随 `@latest`；relay 7.x 若引入新的形态轴，需重新核对。relay 2.x 仅可在 polyfill 自持档与 146–148 档使用，新接入不要用。
+
+> **`inputSchema` 的形态不按浏览器版本干净分档**。polyfill 5.x 自持 context 时返回 JSON Schema **对象**；Chrome 149–153（Origin Trial 主体人群）与 154 的 **same-document 工具返回序列化字符串**；[webmcp#241](https://github.com/webmachinelearning/webmcp/issues/241) 的对象化自 Chrome 154.0.8013 起 cross-document 先行滚动发布，**Chrome 155 起 same-document 也是对象**（实测 20/20），而 nexus 注册的全是 same-document 工具。上游类型因此是 `InputSchema | string`。SDK 对 **string / object / 缺键** 三种形态全部兼容，一律特征检测、不做版本嗅探。
 
 ### 宿主准入要求
 
@@ -415,12 +420,12 @@ polyfill 5.x 与原生 Chrome 都会在 `registerTool` / `getTools` / `executeTo
 - **工具函数可以声明第二个参数拿执行取消信号**：`async (params, { signal }) => {...}`。现有单参工具零改动。
 - **新增三个 JSDoc 标签**：`@title <文本>`、`@untrusted`、`@consequential`，与既有的 `@readonly` 同构。`__webmcpSchema` 从三字段扩为六字段。
 - **构建期新增校验**：工具名不合法时 `pnpm build` 直接报错（而非静默产出不可注册的工具）。
-- relay 的 `embed.js` 需升到 **5.x**（见上方接入步骤）。
+- relay 的 `embed.js` 跟随 `@latest`（见上方接入步骤），且需与本机 relay server 同策略。
 
 ## 与 `@mcp-b/` 其他包的关系
 
 - **`@mcp-b/global` 不可与本 SDK 同时引入**。它 import 即自动初始化，用 value 描述符把 `document` / `navigator` 两个面**替换**为 `BrowserMcpServer`，会摧毁 nexus 在旧宿主档的兼容层。两者二选一。
-- **`@mcp-b/webmcp-local-relay` 5.x** 只读 `document.modelContext`、只认 `getTools()` + `executeTool()`。**relay 2.x 仅在 polyfill 自持 context 的浏览器（Chrome <146 / Firefox / Safari）下可用** —— 因为 `installTestingShim` 提供的 `navigator.modelContextTesting` 只在 polyfill 自持 context 时安装，原生 Chrome 下 polyfill 会提前 return。Chrome 149+ 请升到 relay 5.x。relay 的「Runtime Compatibility」列了三种受支持运行时（`@mcp-b/global` / 原生 Chrome / `@mcp-b/webmcp-polyfill`），**nexus 属第 3 条覆盖**。
+- **`@mcp-b/webmcp-local-relay`** 只读 `document.modelContext`、只认 `getTools()` + `executeTool()`。**relay 2.x 仅在 polyfill 自持 context 的浏览器（Chrome <146 / Firefox / Safari）下可用** —— 因为 `installTestingShim` 提供的 `navigator.modelContextTesting` 只在 polyfill 自持 context 时安装，原生 Chrome 下 polyfill 会提前 return。新接入请直接用 relay 5.x/6.x。relay 的「Runtime Compatibility」列了三种受支持运行时（`@mcp-b/global` / 「current native Chrome with **object-input** `executeTool()`」即 Chrome 155+ / `@mcp-b/webmcp-polyfill`），上游文档另建议「页面 runtime 与 embed 同大版本」。nexus 的 polyfill 停在 5.1.0，属该建议之外的组合，靠 SDK 的**双轴形态归一层**吸收差异（见「浏览器兼容」）—— 这是**有意偏离**，不是上游支持矩阵覆盖的范围。
 - **`usewebmcp` / `react-webmcp` / `webmcp-ts-sdk`** 是上游的同类方案，与 nexus 定位不同：nexus 的差异化价值是**构建时从 TS 类型 + JSDoc 反推 schema**、**三级作用域**与 **scope ownership registry**，这三者上游都没有。nexus 不依赖它们。
 - **declarative forms**：polyfill 5.1.0 会自动安装声明式表单支持（`<form toolname tooldescription toolautosubmit toolparamdescription>`、`SubmitEvent.agentInvoked` / `respondWith()`）。这类工具由 polyfill 直接注册进宿主，**不经 nexus 的所有权镜像**，因此会出现在 `document.modelContext.getTools()` 与 demo 的 DebugPanel 中，但不出现在 nexus 的 widget 推送里。`window` 上的 `toolactivated` / `toolcancel` 事件与 CSS `:tool-form-active` / `:tool-submit-active` 伪类**仅原生 Chrome 支持**，polyfill 不模拟。
 - polyfill 5.1.0 为支持 declarative forms 会改写 `Element.prototype.attachShadow` 与 `HTMLFormElement.prototype.submit`。使用 shadow DOM 或自定义表单提交逻辑的项目需评估。
@@ -478,7 +483,7 @@ WebMCP Nexus 的核心 API（`registerGlobalTools` / `useWebMcpTools`）与构�
 
 - WebMCP 标准：[webmcp.org](https://webmcp.org) ・ [W3C WebML CG 草案](https://webmachinelearning.github.io/webmcp/) ・ [Chrome 官方文档](https://developer.chrome.com/docs/ai/webmcp)
 - 上游运行时 / Polyfill：[`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill) ・ [`@mcp-b/webmcp-types@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-types)
-- 本机 Agent 桥接：[`@mcp-b/webmcp-local-relay@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-local-relay)
+- 本机 Agent 桥接：[`@mcp-b/webmcp-local-relay@6.0.0`](https://www.npmjs.com/package/@mcp-b/webmcp-local-relay)
 - 本仓变更记录：[CHANGELOG.md](./CHANGELOG.md)
 
 ## 参与贡献
