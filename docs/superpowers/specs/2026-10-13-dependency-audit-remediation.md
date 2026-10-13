@@ -147,7 +147,21 @@ pnpm update -r          # 不带 --latest：只在 package.json 已声明的范�
 两个独立 commit，理由是可 review 性与可回滚性：
 
 1. `chore(core): align vitest with workspace at ^4.1.5` — 只含 1 个 package.json + lockfile 中 vitest 相关部分。语义变更，可单独回滚。
-2. `chore(deps): refresh lockfile within declared ranges` — 纯 lockfile，diff 巨大但与第 1 条性质完全不同，混在一起无法 review。
+2. `chore(deps): refresh dependencies within declared ranges` — lockfile **与 6 个 package.json 必须同批提交**。
+
+> ⚠️ **实测踩到的坑（原文写成"纯 lockfile"是错的）**：`pnpm update -r` 会**同时改写 package.json 里的 devDependency specifier**（如 `vitest: ^4.1.5` → `^4.1.11`），并把新 specifier 一并记进 lockfile 的 `importers` 段。只提交 lockfile 会让 CI 的 `pnpm install --frozen-lockfile` 直接失败：
+>
+> ```
+> specifiers in the lockfile don't match specifiers in package.json:
+> * 8 dependencies are mismatched:
+>   - vitest (lockfile: ^4.1.11, manifest: ^4.1.5)
+>   - eslint (lockfile: ^9.39.5, manifest: ^9.39.4)
+>   …
+> ```
+>
+> 提交前务必用 `pnpm install --frozen-lockfile` 自查一次（exit 必须为 0）。
+>
+> **但这不影响发布契约**：已 diff 核实，四个发布包的 `dependencies` 与 `peerDependencies` **一个都没变**（`ts-morph ^28.0.0`、`@mcp-b/webmcp-polyfill ^5.1.0`、`@mcp-b/webmcp-types 5.1.0`、vite peer `^7.0.0 || ^8.0.0`、webpack peer `^4.0.0 || ^5.0.0` 全部原样），变的只有 devDependencies 与私有 demo 自己的 dependencies。抬高 devDep 下限是**有意的**：它能让「没有 lockfile 的解析」也不会落到安全修复版本之下。
 
 Commit message 用英文 Conventional Commits（本仓既有规范）。
 
@@ -165,14 +179,14 @@ pnpm -r --filter "./packages/*" run build
 
 **core 的 99 例是本次的重点回归**——它是唯一从 vitest 3 迁到 4 的工程。
 
-### 4.3 demo 手工回归（必须做，CI 不覆盖）
+### 4.3 demo 手工回归（必须做，CI 不覆盖）—— **已执行，见 §4.6**
 
-`@tiptap` 3.24→3.30 与 `react-router` 7.15→7.18 是**真的会进浏览器产物**的，而 `.github/workflows/deploy-demo.yml` **只 build、不跑测试**。所以本地必须手工过四页：
+`@tiptap` 3.24.0→**3.31.4** 与 `react-router` 7.15.1→**7.18.4** 是**真的会进浏览器产物**的（`lucide-react` 更是 1.17.0→**1.56.0**，跨 39 个 minor），而 `.github/workflows/deploy-demo.yml` **只 build、不跑测试**。所以本地必须手工过四页：
 
-- [ ] 画板页：绘制、`getCanvasSnapshot`、DebugPanel 点「执行」传对象入参
-- [ ] 待办页：增删改、路由级工具随导航挂载/注销
-- [ ] **富文本页（Tiptap）**：输入、加粗/斜体、字号下拉、对齐、下划线、链接、placeholder —— 这是 3.24→3.30 跨 6 个 minor 的重点
-- [ ] 表单页（`withWebMcpTools` class 组件）：HOC 注册与热更新后 schema 重建
+- [x] 画板页：绘制、`getCanvasSnapshot`、DebugPanel 点「执行」传对象入参
+- [x] 待办页：增删改、路由级工具随导航挂载/注销
+- [x] **富文本页（Tiptap）**：输入、加粗/斜体、字号下拉、对齐、下划线、链接、placeholder —— 这是 3.24→3.31 跨 7 个 minor 的重点
+- [x] 表单页（`withWebMcpTools` class 组件）：HOC 注册与热更新后 schema 重建
 
 ### 4.4 效果验证（可复现，不靠 GitHub UI）
 
@@ -183,9 +197,21 @@ pnpm audit --json --registry https://registry.npmjs.org > /tmp/audit-after.json
 
 基线：`{"info":0,"low":9,"moderate":36,"high":42,"critical":6}`。
 
-**预期 critical 6 → 0**，逐条可追溯：`tinypool ×2` + `vitest <3.2.6` 由方案 A 消除，`proxy-addr` + `shell-quote` + `websocket-driver` 由方案 B 消除（父包范围均已实测放行）。high / moderate / low 的残留见 §6，改后需逐条核对而非只看总数。
+**实测结果（已执行，与预期完全一致）**：
 
-另外核对 lockfile 里 `vitest@3.2.4` / `tinypool` / `vite@7.3.3` / `@vitest/mocker@3.2.4` 四个条目应**完全消失**：
+| 严重度 | 改前 | 改后 |
+| --- | --- | --- |
+| critical | 6 | **0** |
+| high | 42 | **1** |
+| moderate | 36 | **1** |
+| low | 9 | **1** |
+| 合计 | 93 | **3** |
+
+共消除 **28 个漏洞包**：`@babel/core`、`@tiptap/core`、`@vitest/mocker`、`baseline-browser-mapping`、`body-parser`、`brace-expansion`、`browserslist`、`compression`、`fast-uri`、`http-proxy-middleware`、`js-yaml`、`launch-editor`、`nanoid`、`postcss`、`postcss-selector-parser`、`prosemirror-view`、`proxy-addr`、`qs`、`react-router`、`shell-quote`、`source-map-js`、`tinypool`、`undici`、`vite`、`vitest`、`webpack-dev-server`、`websocket-driver`、`ws`。
+
+剩下的 3 条正是 §6 预判的那三条（`braces` / `uuid` / `esbuild`），**一条不多一条不少**——这反过来验证了 §3.2 逐个核实父包声明范围的做法是对的。
+
+另外核对 lockfile 里 `vitest@3.2.4` / `tinypool` / `vite@7.3.3` / `@vitest/mocker@3.2.4` 四个条目应**完全消失**（实测四个均为 0 处命中）：
 
 ```bash
 grep -oE "^  (vitest|tinypool|vite|@vitest/mocker)@[0-9][^:(]*" pnpm-lock.yaml | sort -u
@@ -198,6 +224,52 @@ grep -oE "^  (vitest|tinypool|vite|@vitest/mocker)@[0-9][^:(]*" pnpm-lock.yaml |
 - 好处：部署成功本身就是一次真实的 vite build 验证。
 - 风险：公开站点内容会变。因此 §4.3 的手工回归必须在合并**之前**做完，不能靠 CI 兜。
 - 该 workflow 用 `pnpm install --frozen-lockfile`，所以 lockfile 必须与 package.json 一致地提交，否则 CI 直接失败。
+
+### 4.6 demo 回归实测结果（已执行，Chrome 155.0.0.0 原生档 + localhost:5174）
+
+四页全部通过，且顺带在真实宿主上验证了 v1.1.1 的形态归一层：
+
+| 页面 | 结果 |
+| --- | --- |
+| 画板 `/` | 20 工具、schema 全为 object、12 个工具栏按钮标签齐全（lucide-react 1.17→1.56 图标导入正常）；`drawRect` → `getCanvasInfo` 从 0 变 1、`getCanvasShapes` 返回带默认值的完整数据；11 个画板工具连续调用零抛错 |
+| 待办 `/todos` | 9 条待办正常渲染；`getTodoStats` **对象入参 `{}` 与字符串入参 `'{}'` 返回完全一致**；`listTodos({limit:2})` 带实参正常 |
+| 编辑器 `/editor` | Tiptap 3.31.4 下 21 个工具栏按钮全在；点「加粗」后 `<h2>` 变 `<strong>功能演示</strong>`；点「无序列表」后 H2 转为 LI 并**合并进相邻 UL**（ProseMirror 标准 list-joining），`<strong>` 标记在块类型转换中被保留；`isActive()` 对 bold/paragraph/bulletList 判定均正确 |
+| 表单 `/form` | class 组件 + `withWebMcpTools` HOC 注册 6 个工具；`fillForm` 带实参写入后，**真实 DOM input 的 value 同步变化**（证明 React state → DOM 渲染链路正常） |
+
+归一层在真实宿主上的实证：`__webmcpNexusGetToolsWrapped` 与 `__webmcpNexusExecuteToolWrapped` 均为 true、形态传感器判为 `object`（Chrome 155 正确）、**`Object.keys(document.modelContext)` 为 `[]` 且 `{...mc}` 为 `{}`**（即 CHANGELOG 承诺的 WebIDL 保真不变量成立）、annotations（`readOnlyHint`/`consequentialHint`/`untrustedContentHint`）映射正确。路由切换时工具数 20 → 24 → 13 → 6 变化正确，说明作用域注册/注销正常。
+
+回归期间 `console.error` / `console.warn` / `window.onerror` / `unhandledrejection` 四个收集器**全部为空**。
+
+### 4.7 回归中发现的三处既有缺陷（按"欠账写文档不同批修"，本批不动）
+
+以下三条**都不是本次依赖刷新引入的**，已用反证实验或版本比对确认，记录在此以免遗忘：
+
+**1. `undo` / `redo` 的返回值恒为失败，且重做栈永远不会被填充**（`apps/demo/src/store/CanvasStore.tsx:63-72`）
+
+```js
+let removed = null;
+setShapes(prev => { removed = prev[prev.length - 1]; return prev.slice(0, -1); });
+if (removed) setRedoStack(prev => [...prev, removed!]);  // removed 此时仍是 null
+return removed;                                          // 恒为 null
+```
+
+在 **updater 内部**赋值、却在 `setShapes` 返回后**同步读取**。能否"碰巧生效"取决于 React 的 eager-state 优化是否同步调用了 updater。实测表现：`undo` 返回 `{success:false, removedId:null}`，但形状**确实被移除了**（shapeCount 1 → 0）；因为 `removed` 为 null，`setRedoStack` 从不执行，所以 `redo` 永远无法恢复。
+
+> **反证实验（已执行）**：怀疑是 React 19.2.6 → 19.3.0 引入，故临时把 demo 的 react/react-dom 退回 **19.2.6**（已核实 `apps/demo/node_modules/react` 实际为 19.2.6）、清 vite 缓存重启、跑同一个干净序列 —— **行为完全一致**（undo 仍 `success:false`、形状仍被移除、redo 仍无法恢复）。故确认为既有缺陷，与本次刷新无关。实验后已还原并复验（`git status` 干净、react 回到 19.3.0、画板功能正常）。
+>
+> 修法：不要在 updater 里做副作用赋值。改用 `useRef` 镜像 shapes，或让 `removeLastShape` 只返回布尔并由调用方从 ref 读被删项。
+
+**2. Tiptap 告警 `Duplicate extension names found: ['link', 'underline']`**（`apps/demo/src/components/editor/RichTextEditor.tsx:2-4,19-26`）
+
+demo 显式注册了 `Underline` 与 `Link.configure({...})`，而 `StarterKit` **也会注册这两个**（其源码为 `if (this.options.link !== false) extensions.push(Link.configure(...))`，underline 同理）。
+
+> **归因更正**：一开始怀疑是本次升级引入，实测**否**。`@tiptap/starter-kit@3.24.0`（升级前版本）的 dist 里已有完全相同的 `if (this.options.link !== false)` 逻辑，依赖里也早已包含 `@tiptap/extension-link` 与 `@tiptap/extension-underline`。故为既有欠账。
+>
+> 一行可修：`StarterKit.configure({ heading: {...}, link: false, underline: false })`（保留 demo 自己那份带 `openOnClick:false` 与 `rel/target` 的 Link 配置）。Tiptap 自述"This can lead to issues"，重名扩展会让命令注册与 `isActive` 判定依赖不确定的覆盖顺序。
+
+**3. `moveShape` 不校验必填参数**：schema 声明 `required: ['id','dx','dy']`，但传 `{id, x, y}`（缺 dx/dy）时仍返回 `{"success":true}`，实际位移为 `NaN`。属工具实现未做入参校验，既有行为。
+
+> 顺带记录一条**测试方法论**教训：本轮我最初用猜测的参数名调 `reorderShape`（传 `direction:'front'`，真实 schema 是 `action` 且 enum 为 `top/bottom/forward/backward`）与 `moveShape`（传 `x/y`，真实是 `dx/dy`），得到 "shape not found" 后差点误判成应用缺陷。**调 WebMCP 工具前必须先读 `inputSchema`，不能按工具名猜参数。**
 
 ---
 
@@ -213,29 +285,35 @@ grep -oE "^  (vitest|tinypool|vite|@vitest/mocker)@[0-9][^:(]*" pnpm-lock.yaml |
 
 ---
 
-## 6. 没把握的 / 需要你决策的（单独列出）
+## 6. 残留三项：刷新后已复查，全部是**上游卡住**
 
-以下 4 项我**没有足够证据下结论**，不写进"有把握"的执行步骤：
+方案 A/B 执行完后，`pnpm audit` 只剩 3 条。逐条追到了上游最新版，结论是**三条都不是我们能范围内解决的**，且每条的"强行修"代价都高于告警本身的风险。
 
-### 6.1 `uuid@8.3.2`（moderate，GHSA-w5hq-g745-h8pq）
+### 6.1 `braces@3.0.3`（high，**npm 上不存在任何补丁版本**）
 
-- advisory：`< 11.1.1` → 补丁 `>= 11.1.1`。路径：demo → `webpack-dev-server` → `sockjs@0.3.24` → `uuid`，而 **sockjs 声明 `^8.3.2`，跨 3 个大版本，范围内刷不动**。
-- 可能做法：`pnpm.overrides` 强推 `uuid@^11`。**未实测**：sockjs 用的是 `uuid` 的哪个导出（v9 起移除了 default export，若 sockjs 用 `require('uuid')` 整体调用会炸）。
-- 我的倾向：**接受并记录**。dev-only、不进产物、moderate。等 webpack-dev-server 上游放行。
+- 已核实 `npm view braces version` = **3.0.3**，即最高版本就是漏洞版本，advisory 的 patched 字段是 `<0.0.0`。**升级路径不存在。**
+- 刷新后引入链：demo → `webpack@5.111.1` → `webpack-cli@6.0.1`(peer) → `webpack-dev-server@**5.2.6**`(peer) → `chokidar@3.6.0` → `braces@3.0.3`。
+- 关键核实：webpack-dev-server 已从 5.2.4 升到范围内最新的 **5.2.6，但它仍声明 `chokidar: ^3.6.0`**，没换 chokidar 4/5。（本文早先"未核实 5.2.6 是否已换"的悬念到此关闭：没换。）
+- 唯一出路是 **`webpack-dev-server` 5 → 6（大版本）**：其 latest `6.0.0` 声明 `chokidar: ^5.0.0`，而 chokidar 5 不再依赖 braces。但 demo 声明的是 `^5`，升 6 是 dev server 大版本迁移，且 webpack-dev-server 只在 demo 的 **webpack 构建路径**用到（vite 路径不涉及）。
+- 实际可利用性：braces 的问题是解析**不可信** brace 展开模式时的 ReDoS，而这里的 glob 全部来自我们自己的 webpack 配置，**攻击者无法控制**；且属 dev server，不进任何产物。
+- **结论：接受。** 若要清零，代价是把 demo 的 webpack-dev-server 升大版本，风险与收益不匹配。可作为独立议题延后。
 
-### 6.2 `braces@3.0.3`（high，**npm 上不存在补丁版本**）
+### 6.2 `uuid@8.3.2`（moderate，GHSA-w5hq-g745-h8pq）
 
-- advisory `<= 3.0.3`，patched 字段是 `<0.0.0`；已核实 npm 上 braces 最高就是 **3.0.3**，没有更新版本可升。
-- 路径：demo → `webpack-dev-server@5.2.4` → `chokidar@3.6.0` → `braces`。
-- 唯一出路是 webpack-dev-server 换用 **chokidar 4**（chokidar 4 移除了 glob 支持因而不再依赖 braces）。**未核实 5.2.6 是否已换**——这是 §3.1 刷新后需要复查的第一项。
-- 实际可利用性：braces 的问题是解析不可信 brace 展开模式时的 ReDoS，而这里的 glob 来自你自己的 webpack 配置，**攻击者无法控制**。
-- 我的倾向：刷新后复查；若仍在，接受并在 Dependabot 上以 "no patched version available / dev-only / not attacker-controlled" 为由 dismiss。
+- advisory `< 11.1.1` → 补丁 `>= 11.1.1`。引入链：demo → `webpack-dev-server` → `sockjs@0.3.24` → `uuid@8.3.2`。
+- 关键核实：**`sockjs` 的 latest 就是 `0.3.24`（我们已在最新），且它仍声明 `uuid: ^8.3.2`** → 上游根本没动，跨 3 个大版本，**范围内无解**。
+- `pnpm install` 每次都会打印 `WARN 1 deprecated subdependencies found: uuid@8.3.2`——uuid 8 上游已废弃。
+- 唯一出路是 `pnpm.overrides` 强推 `uuid@^11`。**未实测且不建议**：uuid v9 起移除了 default export，sockjs 是否只用 `v4` 命名导出需先验证；为一条 dev-only 的 moderate 去强改上游没测过的组合不划算。
+- 实际暴露：sockjs 只是 webpack-dev-server 的 HMR websocket 回退传输，仅本机 dev server 使用。
+- **结论：接受并记录，等 sockjs 或 webpack-dev-server 上游放行。**
 
 ### 6.3 `esbuild@0.27.7`（low，GHSA-g7r4-m6w7-qqqr）
 
-- advisory `>= 0.27.3, < 0.28.1` → 补丁 `>= 0.28.1`。路径：demo → `vite` → `esbuild`。
-- **未核实 vite 8.0.16 是否放行 esbuild 0.28**（vite 对 esbuild 通常钉较紧的 caret）。若不放行，只能 override 或等 vite。
-- 我的倾向：low 严重度，刷新后复查，不主动 override。
+- advisory `>= 0.27.3, < 0.28.1` → 补丁 `>= 0.28.1`（esbuild latest 是 `0.28.2`）。
+- **归因纠正**：本文早先猜"未核实 vite 是否放行 esbuild 0.28"，方向错了。实测 **vite 8.3.4 把 esbuild 声明为 optional peerDependency `^0.27.0 || ^0.28.0`，是放行 0.28 的**。真正把 esbuild 钉在 0.27 的是 **`tsup@8.5.1` 的 `dependencies.esbuild: ^0.27.0`**。
+- 而 `tsup` 的 latest 就是 **8.5.1**（我们已在最新）且仍声明 `^0.27.0` → **上游没动，范围内无解**。
+- 唯一出路是 `pnpm.overrides` 强推 `esbuild@^0.28.2`。**明确不建议**：tsup 是**四个发布包**的构建工具，绕过它声明的范围强塞 esbuild 0.28 可能改变产物，而这条只是 low 且 esbuild 只在构建期运行、不进浏览器产物。
+- **结论：接受，不 override。** 等 tsup 上游放行。
 
 ### 6.4 是否收窄 vite-plugin 的 peer 范围
 
