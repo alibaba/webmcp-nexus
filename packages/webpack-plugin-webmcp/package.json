@@ -48,8 +48,8 @@
     "webpack": "^4.0.0 || ^5.0.0"
   },
   "devDependencies": {
-    "@types/node": "^24.12.2",
-    "tsup": "^8.5.0",
-    "webpack": "^5.98.0"
+    "@types/node": "^24.19.2",
+    "tsup": "^8.5.1",
+    "webpack": "^5.111.1"
   }
 }
