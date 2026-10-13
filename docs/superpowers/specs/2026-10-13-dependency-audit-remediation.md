@@ -319,14 +319,32 @@ demo 显式注册了 `Underline` 与 `Link.configure({...})`，而 `StarterKit` 
 
 见 §5 最后一行。这是产品/契约决策，不是技术判断，需要你定。
 
-### 6.5 两条需要去 Dependabot 上 dismiss 的滞后告警
+### 6.5 Dependabot 面板的最终状态与两处更正（合并后实测）
 
-已实测确认**不适用当前 lockfile**，留着会一直误导面板数字：
+合入 main 后 Dependabot 重扫了新 lockfile，开放告警从 77 条收敛到 **3 条**，且 deploy-demo 与 CodeQL 两个 workflow 均 success。线上 demo 已实测可用（`isSecureContext` true、canvas 与 12 个工具栏按钮正常、**20 个工具成功注册**、`Object.keys(document.modelContext)` 为 0）。
 
-- `vitest >= 4.0.0, < 4.1.0`（"Vitest UI server 任意文件读"）：lockfile 穷举只有 `vitest@3.2.4` 与 `4.1.7`，都不在此区间。（注意：**另有一条** `vitest < 3.2.6` 的 critical 是真适用于 3.2.4 的，不要混淆——它由方案 A 修掉。）
-- `vite <= 2.14.0`（launch-editor NTLMv2 泄露）：实际装的是 7.3.3 / 8.0.14。
+**更正 1：本文早前列的"两条滞后告警"已自动关闭，不需要 dismiss。**
+`vitest >= 4.0.0, < 4.1.0` 与 `vite <= 2.14.0` 在重扫后自行消失。（顺带说明：判断某条告警是否适用，**不能读 `security_advisory.vulnerabilities[0]`** —— 那只是该 advisory 的第一个范围；必须读 `security_vulnerability.vulnerable_version_range`，它才是与本仓实际版本做过匹配的那一条。）
 
-Dismiss 操作需要 `repo` 权限（`gh` 当前账号 `aliciqin` 已具备），属对仓库共享状态的写操作，**需你确认后我才做**。
+**更正 2：`uuid` #1 是准确告警，不是误报。** 它的匹配范围是 `< 11.1.1`（覆盖我们装的 8.3.2）；早先看到的 `>= 12.0.0, < 12.0.1` 是同一 advisory 的另一个范围，正是读错字段导致的误判。
+
+**最终 3 条开放告警（全部真实、全部上游卡死，对应 §6.1–6.3）：**
+
+| # | 包 | 严重度 | 匹配范围 | 补丁 |
+| --- | --- | --- | --- | --- |
+| 92 | `braces` | high | `<= 3.0.3` | **无补丁版本** |
+| 1 | `uuid` | medium | `< 11.1.1` | 11.1.1（被 sockjs `^8.3.2` 卡住） |
+| 6 | `esbuild` | low | `>= 0.27.3, < 0.28.1` | 0.28.1（被 tsup `^0.27.0` 卡住） |
+
+**Dismiss 未能执行：token scope 不足。** `gh` 当前 token 的 scopes 是 `gist, read:org, repo, workflow`，**缺 `security_events`**。实测证据：同一 token **读** `alerts/92` 正常返回（`open` / `high`），但 `PATCH …/dismisses` 经 `gh api` 与裸 `curl` 均返回 **HTTP 404**——GitHub 对缺该 scope 的请求刻意返回 404 而非 403，所以 404 在这里不等于"告警不存在"。
+
+解除办法二选一：
+
+```bash
+gh auth refresh -h github.com -s security_events   # 交互式，之后可重试 API dismiss
+```
+
+或在 UI 上手工 dismiss（https://github.com/alibaba/webmcp-nexus/security/dependabot ），三条统一选 **`tolerable risk`**，理由可直接引用 §6.1–6.3 的结论：无补丁版本 / 上游最新版仍钉旧范围 / dev-only 且不进任何发布产物 / 触发条件不受攻击者控制。
 
 ---
 
@@ -339,13 +357,15 @@ Dismiss 操作需要 `repo` 权限（`gh` 当前账号 `aliciqin` 已具备）�
 5. `pnpm update -r`（必要时 `--depth Infinity`）
 6. 跑 §4.2 全量门禁 + §4.3 demo 四页手工回归
 7. `pnpm audit --json` 前后对比（§4.4），核对 4 个应消失的条目
-8. commit 2：`chore(deps): refresh lockfile within declared ranges`
+8. commit 2：`chore(deps): refresh dependencies within declared ranges`（**含 6 个 package.json**，见 §4.1 的坑）
 9. 复查 §6.1–6.3 三项残留，逐条给出"已修 / 仍存在 + 理由"
-10. 把 §6.5 两条滞后告警的 dismiss 清单交你确认
-11. 你确认后再合 main（**注意会触发公开 demo 重新部署**，见 §4.5）
+10. 按 §6.5 处理 Dependabot 面板（**已受阻于 token 缺 `security_events` scope**）
+11. 合 main（**会触发公开 demo 重新部署**，见 §4.5）
+
+**执行状态（2026-10-13）**：步骤 1–9、11 已完成。分支 `chore/deps-refresh` 四个提交已 FF 合入 main 并推送（`0473f43..26e6f86`）；`Deploy Demo to GitHub Pages` 与 `CodeQL` 两个 workflow 均 success；线上 demo 已实测可用。步骤 10 因 token scope 不足未执行，解除办法见 §6.5 末尾。
 
 ## 8. 回滚
 
-- 两个 commit 独立，可 `git revert` 任一而不影响另一个。
-- lockfile 刷新若导致 demo 回归失败：`git checkout HEAD~1 -- pnpm-lock.yaml && pnpm install --frozen-lockfile` 即可整体退回，无需逐包定位。
-- 不涉及任何已发布 npm 包的产物变更，**不需要发版**（core 的 vitest 是 devDependency，插件包的 peer 契约未动）。若你希望把这次刷新带进下一次发版，那也是下一次 `publish.sh` 自然携带，不需要为它单独发版。
+- 四个提交职责分离，可 `git revert` 任一而不影响其余：`docs`（方案）→ `chore(core)`（vitest 对齐）→ `chore(deps)`（lockfile + package.json）→ `docs`（结果与欠账）。
+- 若 demo 回归失败要退依赖：`chore(deps)` 那一提交必须**整体** revert（lockfile 与 6 个 package.json 是一体的，只退其一会让 `--frozen-lockfile` 失败，见 §4.1）。
+- 不涉及任何已发布 npm 包的产物变更，**不需要发版**：已 diff 核实四个发布包的 `dependencies` 与 `peerDependencies` 一个都没动（`ts-morph ^28.0.0`、`@mcp-b/webmcp-polyfill ^5.1.0`、`@mcp-b/webmcp-types 5.1.0`、vite peer `^7.0.0 || ^8.0.0`、webpack peer `^4.0.0 || ^5.0.0`），变的只有 devDependencies 与私有 demo 自己的 dependencies。若希望把这次刷新带进下一次发版，那也是下一次 `publish.sh` 自然携带，不需要为它单独发版。
