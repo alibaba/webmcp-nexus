@@ -7,7 +7,7 @@
 
 import nodePath from 'node:path';
 import type { Plugin, ResolvedConfig } from 'vite';
-import { transformCode, type AliasMap } from 'webmcp-nexus-core';
+import { InvalidToolNameError, transformCode, type AliasMap } from 'webmcp-nexus-core';
 
 const isDebug = () => (process.env.DEBUG ?? '').toLowerCase().includes('webmcp');
 
@@ -88,6 +88,7 @@ export function vitePluginWebMcp(options: WebMcpPluginOptions = {}): Plugin {
           return { code: result.code, map: null };
         }
       } catch (err: unknown) {
+        if (err instanceof InvalidToolNameError) throw err;
         const message = err instanceof Error ? err.message : String(err);
         this.warn(`[webmcp] transform failed for ${cleanId}: ${message}`);
         if (isDebug()) {

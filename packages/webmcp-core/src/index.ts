@@ -14,6 +14,7 @@ export {
   assertValidToolName,
   resolveToolDescription,
   WEBMCP_TOOL_NAME_PATTERN,
+  InvalidToolNameError,
 } from './schema-generator';
 export type {
   JsonSchema,

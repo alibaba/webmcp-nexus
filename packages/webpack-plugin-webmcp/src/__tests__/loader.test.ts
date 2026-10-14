@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { transformCode } from 'webmcp-nexus-core';
 import webmcpLoader from '../loader';
 
-vi.mock('webmcp-nexus-core', () => ({
+vi.mock('webmcp-nexus-core', async importOriginal => ({
+  ...(await importOriginal<typeof import('webmcp-nexus-core')>()),
   transformCode: vi.fn(),
 }));
 
@@ -17,10 +18,7 @@ function createLoaderContext(resourcePath: string, options: Record<string, unkno
 }
 
 /** Simulate webpack v4 loader context (no getOptions, uses this.query) */
-function createV4LoaderContext(
-  resourcePath: string,
-  query: unknown = {},
-) {
+function createV4LoaderContext(resourcePath: string, query: unknown = {}) {
   return {
     resourcePath,
     query,
@@ -70,6 +68,19 @@ describe('webmcpLoader', () => {
     expect(mockedTransformCode).toHaveBeenCalledWith(source, '/my/project/src/app.tsx', {
       projectRoot: undefined,
     });
+  });
+
+  it('should still warn and return the source for other transform errors', () => {
+    const source = 'registerGlobalTools({ search: searchTool });';
+    mockedTransformCode.mockImplementationOnce(() => {
+      throw new Error('parse failed');
+    });
+    const context = createLoaderContext('/project/src/tools.ts');
+
+    expect(webmcpLoader.call(context, source)).toBe(source);
+    expect(context.emitWarning).toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.stringContaining('parse failed') }),
+    );
   });
 });
 

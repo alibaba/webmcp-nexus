@@ -5,7 +5,8 @@ import { transformCode } from 'webmcp-nexus-core';
  * mock webmcp-nexus-core，避免真实解析 TypeScript 的开销。
  * 测试仅关注 include 匹配逻辑，transformCode 一律返回已转换。
  */
-vi.mock('webmcp-nexus-core', () => ({
+vi.mock('webmcp-nexus-core', async importOriginal => ({
+  ...(await importOriginal<typeof import('webmcp-nexus-core')>()),
   transformCode: vi.fn(() => ({
     code: '// transformed',
     transformed: true,
