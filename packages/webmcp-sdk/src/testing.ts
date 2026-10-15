@@ -16,6 +16,9 @@ export type { ActiveToolState, NativeToolState } from './registry';
 
 export { __resetPolyfillStateForTest, __cleanupPolyfillOnlyForTest } from './polyfill';
 
+export { configureBuiltinTools } from './builtinTools';
+export { CALL_TOOL_NAME } from './builtinTools';
+
 export {
   coerceInputSchema,
   getModelContext,

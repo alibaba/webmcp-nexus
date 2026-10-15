@@ -10,6 +10,7 @@ import {
 } from './registry';
 import { ensureModelContextPolyfill } from './polyfill';
 import { isModelContextAvailable } from './model-context';
+import { ensureBuiltinTools } from './builtinTools';
 import type { WebMcpAnnotatedFn } from './types';
 
 let scopeCounter = 0;
@@ -92,6 +93,10 @@ export function useWebMcpTools(...toolMaps: Record<string, Function>[]): void {
     }
 
     patchModelContextEventSupport();
+
+    // 内置工具是 global scope，刻意不进 registeredNames：组件卸载不得把它带走。
+    // ensureBuiltinTools 自身幂等，重复挂载不会重复注册。
+    ensureBuiltinTools();
 
     const registeredNames: string[] = [];
 

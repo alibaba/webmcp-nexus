@@ -74,6 +74,25 @@ export interface WebMcpToolAnnotations {
   consequentialHint?: boolean;
 }
 
+/**
+ * SDK 内置工具的开关。目前只有一个内置工具：全局代调工具 `webmcpCallTool`。
+ *
+ * 通过 `configureBuiltinTools()` 设置，与调用顺序无关（关闭时若已注册会就地反注册）。
+ */
+export interface WebMcpBuiltinToolsOptions {
+  /**
+   * 是否注册内置的全局代调工具 `webmcpCallTool`，默认 `true`。
+   *
+   * 它解决的是客户端侧缺口：部分 MCP 客户端的会话工具索引是启动快照、不响应
+   * `tools/list_changed`，于是会话开始后才随路由出现的工具调不到。该工具启动时就注册，
+   * 因此必然在快照里，可按名代调当前页的任意工具。
+   *
+   * 关掉它的理由通常是：不想让 Agent 绕开客户端自己的工具确认流程去调破坏性工具
+   * （代调时客户端看到的是 `webmcpCallTool` 的 annotations，不是目标工具的）。
+   */
+  callTool?: boolean;
+}
+
 /** 传递给 document.modelContext.registerTool 的工具配置 */
 export interface WebMcpToolConfig {
   name: string;

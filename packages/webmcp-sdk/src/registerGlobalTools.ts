@@ -9,11 +9,16 @@ import {
 } from './registry';
 import { ensureModelContextPolyfill } from './polyfill';
 import { isModelContextAvailable } from './model-context';
+import { ensureBuiltinTools } from './builtinTools';
 import type { WebMcpAnnotatedFn } from './types';
 
 /**
  * 全局注册 WebMCP 工具。应用启动时调用一次。
  * 支持可变参数，兼容 import * as module 批量导入。
+ *
+ * 同时会注册 SDK 内置的全局代调工具 `webmcpCallTool`（可用 `configureBuiltinTools` 关闭）。
+ * 只用 `useWebMcpTools` / `withWebMcpTools` 的应用无需为此调用本函数 —— 那两个入口同样会
+ * 自动注册内置工具。
  *
  * @param toolMaps - 一个或多个 Record<string, Function> 对象
  *
@@ -34,6 +39,10 @@ export function registerGlobalTools(...toolMaps: Record<string, Function>[]): vo
 
   try {
     patchModelContextEventSupport();
+
+    // 内置工具先于用户工具注册：既保证它早于一切动态工具（路由/组件级）出现，
+    // 也让 CALL_TOOL_NAME 成为保留名 —— 用户若有同名工具会走 registerEntry 的重名告警。
+    ensureBuiltinTools();
 
     let registeredCount = 0;
 

@@ -1,9 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook } from '@testing-library/react';
-import { registerGlobalTools, useWebMcpTools, type WebMcpToolSchema } from 'webmcp-nexus-sdk';
+import {
+  registerGlobalTools,
+  useWebMcpTools,
+  configureBuiltinTools,
+  type WebMcpToolSchema,
+} from 'webmcp-nexus-sdk';
 import {
   clearRegistry,
   getActiveToolStates,
+  CALL_TOOL_NAME,
   __resetPolyfillStateForTest,
 } from 'webmcp-nexus-sdk/testing';
 
@@ -49,6 +55,10 @@ function host(): any {
 beforeEach(() => {
   __resetPolyfillStateForTest();
   clearRegistry();
+  // 关掉 SDK 内置的 webmcpCallTool：以下用例断言的是宿主工具表与 SDK 所有权镜像的
+  // **精确名单**，内置工具会让它们整体偏移一位。内置工具对真实 polyfill 的端到端行为
+  // 由文件末尾专门的 describe 覆盖，它会显式打开。
+  configureBuiltinTools({ callTool: false });
 });
 
 afterEach(() => {
@@ -325,5 +335,187 @@ describe('execute 第二参（执行取消信号）', () => {
     // polyfill 内部是 tool.execute(args) 单参调用，options.signal 只用于 race 外层 promise。
     // nexus 的透传是正确的向前兼容：原生 Chrome 会真正传入 { signal }。
     expect(seen).toEqual([undefined]);
+  });
+});
+
+describe('内置代调工具 webmcpCallTool（真实 polyfill 端到端）', () => {
+  beforeEach(() => {
+    configureBuiltinTools({ callTool: true });
+  });
+
+  interface DispatchResult {
+    content?: Array<{ type?: string; text?: string }>;
+    isError?: boolean;
+    [key: string]: unknown;
+  }
+
+  /**
+   * 经真实宿主代调一次：取 descriptor → executeTool → 反序列化。
+   *
+   * 入参故意传**对象**：polyfill 5.1.0 只吃 JSON 字符串，靠 nexus 的轴一包装归一，
+   * 这样连包装一起验（relay 6.x 正是传对象）。
+   */
+  async function dispatchRaw(input: Record<string, unknown>): Promise<string> {
+    const callTool = (await host().getTools()).find(
+      (t: { name: string }) => t.name === CALL_TOOL_NAME,
+    );
+    expect(callTool).toBeDefined();
+    // 宿主的 executeTool 返回 JSON 字符串（本文件上方已有用例单独断言过这一点）
+    const serialized = await host().executeTool(callTool, input);
+    expect(typeof serialized).toBe('string');
+    return serialized as string;
+  }
+
+  async function dispatch(input: Record<string, unknown>): Promise<DispatchResult> {
+    return JSON.parse(await dispatchRaw(input)) as DispatchResult;
+  }
+
+  function textOf(result: DispatchResult): string {
+    return (result.content ?? []).map(block => block.text ?? '').join('\n');
+  }
+
+  it('随 registerGlobalTools 自动注册，且注册早于用户工具', async () => {
+    registerGlobalTools({ listTodos: makeTool('listTodos', () => ({ ok: true })) });
+    await flushHostTasks();
+
+    const names = (await host().getTools()).map((t: { name: string }) => t.name);
+    expect(names).toContain(CALL_TOOL_NAME);
+    expect(names).toContain('listTodos');
+    // 注册顺序只能在 SDK 侧断言：polyfill 5.1.0 的 getTools() 末尾按名字字典序 sort，
+    // 宿主工具表的顺序与注册顺序无关（'listTodos' < 'webmcpCallTool'）。
+    // 顺序本身的语义在 registerGlobalTools.test.ts 里用宿主的 registerTool 调用序锁定。
+    expect(getActiveToolStates().map(s => s.name)[0]).toBe(CALL_TOOL_NAME);
+  });
+
+  it('只用 useWebMcpTools（从不调 registerGlobalTools）也能拿到内置工具', async () => {
+    renderHook(() => useWebMcpTools({ pageTool: makeTool('pageTool', () => ({ ok: 1 })) }));
+    await flushHostTasks();
+
+    const names = (await host().getTools()).map((t: { name: string }) => t.name);
+    expect(names).toContain(CALL_TOOL_NAME);
+    expect(names).toContain('pageTool');
+  });
+
+  it('命中：代调结果与客户端直调该工具的结果**逐字一致**', async () => {
+    registerGlobalTools({ getCanvasInfo: makeTool('getCanvasInfo', () => ({ width: 800 })) });
+    await flushHostTasks();
+
+    const tools = await host().getTools();
+    const direct = await host().executeTool(
+      tools.find((t: { name: string }) => t.name === 'getCanvasInfo'),
+      '{}',
+    );
+    const viaDispatch = await dispatchRaw({ name: 'getCanvasInfo' });
+
+    // dispatcher 刻意**不做二次归一**：宿主 executeTool 返回 JSON 字符串，handler 只 parse
+    // 后把内层工具的返回值原样上交，由消费方（relay 的 normalizeToolResponse）用它那层更宽
+    // 的规则收尾。nexus 自己的 isCallToolResult 只认 text/image/resource 三种 content 且只看
+    // 首元素，上游 isContentBlock 认 6 种并逐个校验必填字段 —— 在页面内先归一会把
+    // resource_link/audio 形状的结果误判重包、把 isError 抹成 false，还会丢 structuredContent。
+    expect(viaDispatch).toBe(direct);
+    expect(JSON.parse(viaDispatch)).toEqual({ width: 800 });
+  });
+
+  it('内层 isError 穿过两层序列化后仍然是 true', async () => {
+    registerGlobalTools({
+      failing: makeTool('failing', () => ({
+        content: [{ type: 'text', text: 'boom' }],
+        isError: true,
+      })),
+    });
+    await flushHostTasks();
+
+    const result = await dispatch({ name: 'failing' });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual([{ type: 'text', text: 'boom' }]);
+  });
+
+  it('未命中：isError + 当前页工具目录，且目录不含自身', async () => {
+    registerGlobalTools({ listTodos: makeTool('listTodos', () => ({ ok: true })) });
+    await flushHostTasks();
+
+    const result = await dispatch({ name: 'listTodosXXX' });
+    const text = textOf(result);
+
+    expect(result.isError).toBe(true);
+    expect(text).toContain('Tool "listTodosXXX" not found');
+    expect(text).toContain('Available tools:');
+    expect(text).toContain('listTodos');
+    expect(text).not.toContain(CALL_TOOL_NAME);
+  });
+
+  it('目录是实时的：路由级工具卸载后再代调即未命中', async () => {
+    const { unmount } = renderHook(() =>
+      useWebMcpTools({ pageTool: makeTool('pageTool', () => ({ ok: 1 })) }),
+    );
+    await flushHostTasks();
+    expect((await dispatch({ name: 'pageTool' })).isError).toBeFalsy();
+
+    unmount();
+    await flushHostTasks();
+
+    const result = await dispatch({ name: 'pageTool' });
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('Tool "pageTool" not found');
+  });
+
+  it('name 指向自己 → isError 自递归守卫，不会二次进入宿主', async () => {
+    registerGlobalTools({ listTodos: makeTool('listTodos', () => ({ ok: true })) });
+    await flushHostTasks();
+
+    const result = await dispatch({ name: CALL_TOOL_NAME });
+
+    expect(result.isError).toBe(true);
+    expect(textOf(result)).toContain('cannot call itself');
+  });
+
+  it('configureBuiltinTools({ callTool: false }) 时宿主工具表里没有它', async () => {
+    configureBuiltinTools({ callTool: false });
+
+    registerGlobalTools({ listTodos: makeTool('listTodos', () => ({ ok: true })) });
+    await flushHostTasks();
+
+    const names = (await host().getTools()).map((t: { name: string }) => t.name);
+    expect(names).not.toContain(CALL_TOOL_NAME);
+    expect(names).toContain('listTodos');
+  });
+
+  async function hostNames(): Promise<string[]> {
+    return (await host().getTools()).map((t: { name: string }) => t.name);
+  }
+
+  it('先注册后关：宿主工具表里**真的**摘掉了（走 polyfill 的 signal hook，不是 SDK 内部镜像）', async () => {
+    registerGlobalTools({ listTodos: makeTool('listTodos', () => ({ ok: true })) });
+    await flushHostTasks();
+    expect(await hostNames()).toContain(CALL_TOOL_NAME);
+
+    configureBuiltinTools({ callTool: false });
+    await flushHostTasks();
+
+    // spec §8 说的唯一运行时回滚手段。polyfill 5.x 没有 unregisterTool，摘除完全依赖
+    // controller.abort() → polyfill 注册时自己挂的 signal hook，是一条纯上游行为链路，
+    // 所以必须端到端锁一次：只断言 getActiveToolNames()（SDK 内部镜像）的话，abort 链路
+    // 对 builtin owner 静默失效时单测全绿，而生产上关掉开关后 relay 仍在上报、Agent 仍能代调。
+    const names = await hostNames();
+    expect(names).not.toContain(CALL_TOOL_NAME);
+    expect(names).toContain('listTodos');
+  });
+
+  it('关掉再打开：立即回到宿主工具表，不需要再跑一次注册入口', async () => {
+    registerGlobalTools({ listTodos: makeTool('listTodos', () => ({ ok: true })) });
+    await flushHostTasks();
+
+    configureBuiltinTools({ callTool: false });
+    await flushHostTasks();
+    expect(await hostNames()).not.toContain(CALL_TOOL_NAME);
+
+    // 此后不再调 registerGlobalTools、也不挂载任何组件，只翻开关。
+    // 应用可能启动时只注册一次、之后没有组件重挂载，若 enable 分支不补注册，
+    // 一个 disable→enable 循环就会让 webmcpCallTool 永久消失。
+    configureBuiltinTools({ callTool: true });
+    await flushHostTasks();
+
+    expect(await hostNames()).toContain(CALL_TOOL_NAME);
   });
 });

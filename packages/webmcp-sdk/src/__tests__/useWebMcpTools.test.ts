@@ -3,6 +3,7 @@ import { renderHook } from '@testing-library/react';
 import { useWebMcpTools } from '../useWebMcpTools';
 import { getActiveToolNames } from '../registry';
 import { installFakeHost, teardownHost } from './host-helpers';
+import { CALL_TOOL_NAME, configureBuiltinTools } from '../builtinTools';
 
 function makeToolFn(schemaOverrides?: Record<string, unknown>) {
   const fn = async (input: any) => input;
@@ -295,5 +296,57 @@ describe('useWebMcpTools', () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+describe('useWebMcpTools 与内置工具', () => {
+  const registerTool = vi.fn();
+
+  beforeEach(() => {
+    registerTool.mockReset();
+    // 先翻开关、再装宿主：configureBuiltinTools 的 enable 分支在宿主可用时会立即补注册，
+    // 那样内置工具就是 beforeEach 注册的了，测不到 useWebMcpTools 自己会不会注册。
+    // 这个顺序下注册只能由被测入口触发。
+    configureBuiltinTools({ callTool: true });
+    installFakeHost({ registerTool });
+  });
+
+  afterEach(() => {
+    document.body.innerHTML = '';
+    teardownHost();
+  });
+
+  function registeredNames(): string[] {
+    return registerTool.mock.calls.map(c => c[0].name as string);
+  }
+
+  it('不调 registerGlobalTools 也会自动注册 webmcpCallTool', () => {
+    renderHook(() => useWebMcpTools({ myTool: makeToolFn() }));
+
+    expect(registeredNames()).toEqual([CALL_TOOL_NAME, 'myTool']);
+    expect(getActiveToolNames()).toContain(CALL_TOOL_NAME);
+  });
+
+  it('内置工具是 global scope，组件卸载不会带走它', () => {
+    const { unmount } = renderHook(() => useWebMcpTools({ myTool: makeToolFn() }));
+
+    unmount();
+
+    expect(getActiveToolNames()).toEqual([CALL_TOOL_NAME]);
+  });
+
+  it('多个组件重复挂载不重复注册内置工具', () => {
+    renderHook(() => useWebMcpTools({ aTool: makeToolFn() }));
+    renderHook(() => useWebMcpTools({ bTool: makeToolFn() }));
+
+    expect(registeredNames().filter(n => n === CALL_TOOL_NAME)).toHaveLength(1);
+  });
+
+  it('configureBuiltinTools({ callTool: false }) 时只注册用户工具', () => {
+    configureBuiltinTools({ callTool: false });
+
+    renderHook(() => useWebMcpTools({ myTool: makeToolFn() }));
+
+    expect(registeredNames()).toEqual(['myTool']);
   });
 });

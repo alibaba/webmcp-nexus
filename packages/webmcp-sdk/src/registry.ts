@@ -720,7 +720,7 @@ function getOwnerKey(owner: ToolOwner): string {
   return `${owner.scope}:${owner.scopeId}`;
 }
 
-function describeError(error: unknown): string {
+export function describeError(error: unknown): string {
   return error instanceof Error ? `${error.name}: ${error.message}` : String(error);
 }
 

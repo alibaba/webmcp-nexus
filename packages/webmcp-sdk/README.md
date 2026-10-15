@@ -22,6 +22,7 @@
 - [安装](#安装)
 - [快速上手](#快速上手)
 - [API 速览](#api-速览)
+- [内置工具：webmcpCallTool](#内置工具webmcpcalltool)
 - [生态包](#生态包)
 - [相关链接](#相关链接)
 - [许可证](#许可证)
@@ -30,13 +31,16 @@
 
 `webmcp-nexus-sdk` 是 [WebMCP Nexus](https://github.com/alibaba/webmcp-nexus) 项目的运行时 SDK，围绕 [W3C WebMCP 标准提案](https://webmcp.org) 提供生产可用的 React 集成方案。
 
-它只导出三个 API —— `registerGlobalTools`、`useWebMcpTools` 和 `withWebMcpTools` —— 即可覆盖**全局**、**路由**、**组件**三种生命周期，让任何普通的 TypeScript 函数无需包装即可被 MCP 客户端（Claude Desktop、Cursor、VS Code 等）直接调用。
+它只导出三个注册 API —— `registerGlobalTools`、`useWebMcpTools` 和 `withWebMcpTools` —— 即可覆盖**全局**、**路由**、**组件**三种生命周期，让任何普通的 TypeScript 函数无需包装即可被 MCP 客户端（Claude Desktop、Cursor、VS Code 等）直接调用。
+
+SDK 还会自动注册一个内置工具 [`webmcpCallTool`](#内置工具webmcpcalltool)，用来兜住「MCP 客户端不刷新工具列表、调不到会话中途才出现的工具」这个客户端侧缺口。它默认开启，可用 `configureBuiltinTools({ callTool: false })` 关闭。
 
 ## 核心特性
 
 - 🪶 **极简 API** —— 仅 3 个函数即可完成所有注册场景。
 - 🧩 **三级作用域** —— 全局工具、路由级工具、组件级工具自动随生命周期挂载 / 注销。
 - 🏛️ **Class 组件支持** —— `withWebMcpTools` HOC 让 class 组件方法与函数组件 Hook 享受同等的自动注册体验。
+- 🔧 **内置代调工具** —— 自动注册 `webmcpCallTool`，让不响应 `tools/list_changed` 的客户端也能按名调到当前页的任意工具；未命中时返回当前页工具目录，Agent 可自我纠正。见[内置工具](#内置工具webmcpcalltool)。
 - 🌐 **跨浏览器兼容** —— Chrome 149+ 使用原生 `document.modelContext`（146–149 由 polyfill 做入口桥接）；其他环境在首次注册时自动启用 [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill)（本包声明为 `dependencies`、由你的打包器解析，**未内联进产物**），业务代码完全无感。SDK 会在宿主的 `getTools` / `executeTool` 上装**不可枚举**的形态归一包装以吸收 Chrome 155 的入参变更，`Object.keys(document.modelContext)` 仍为 `[]`，polyfill 的「实例无 own enumerable keys」WebIDL 保真不变量保持；`registerTool` 一律不包装。
 - 🔁 **HMR 友好** —— 开发阶段修改函数签名后，工具 schema 会自动重新注册。
 - 🛡️ **冲突感知** —— 内置 scope ownership registry，多个 scope 注册同名工具时仅警告不阻断，注销严格隔离。
@@ -208,6 +212,68 @@ export default withWebMcpTools(OrderPanel);
 
 > 完整 API 文档与最佳实践参见 [仓库 README](https://github.com/alibaba/webmcp-nexus#readme)。
 
+### `configureBuiltinTools(options)`
+
+开关 SDK 的内置工具。目前只有一个：全局代调工具 `webmcpCallTool`（默认开启）。
+
+```ts
+import { configureBuiltinTools } from 'webmcp-nexus-sdk';
+
+// 关掉内置代调工具。与调用顺序无关：已注册时会就地反注册。
+configureBuiltinTools({ callTool: false });
+```
+
+## 内置工具：webmcpCallTool
+
+SDK 会自动注册一个内置全局工具 `webmcpCallTool`，**不需要你写任何代码**：`registerGlobalTools`、`useWebMcpTools`、`withWebMcpTools` 三个入口都会在注册你自己的工具之前先把它注册好（幂等，重复调用不会重复注册）。
+
+### 它解决什么问题
+
+nexus 的路由级 / 组件级工具随页面 mount/unmount 增删。工具列表变化会通过 `tools/list_changed` 通知 MCP 客户端，但该通知在规范里只是 **SHOULD**，客户端可以缓存工具列表——**实测 Qoder 的会话工具索引就是启动快照，完全不响应 `list_changed`**。结果是：会话开始之后才出现的工具，Agent 永远调不到。
+
+relay 侧是实时准确的，缺口在客户端。客户端改不了，所以 SDK 在**页面侧**补一个逃生口：`webmcpCallTool` 启动时就注册，因此必然在客户端的快照里；它接受一个工具名，在页面内实时查 `document.modelContext.getTools()` 并代调。
+
+```jsonc
+// Agent 调用示例
+{ "name": "listTodos", "arguments": { "limit": 3 } }
+```
+
+这是 relay 已删除的 `webmcp_call_tool`（随 `@mcp-b/webmcp-local-relay` 5.0.0 移除）的页面侧等价物，入参形状与错误行为都对齐旧版。
+
+### 前提：客户端快照里必须已经有它
+
+顺序必须是「**起 relay → 打开页面并确认已连上 → 再开（或重开）客户端会话**」。如果页面是在会话开始之后才打开的，连这个逃生口本身都不在快照里，也就无从调用。
+
+### `name` 要传页面原始名
+
+relay 会改写工具名：`sanitizeName` 把 `[^a-zA-Z0-9_]` 替换成 `_`，多标签页同名工具还会追加 `_<4 位 tabId>` 后缀。**`webmcpCallTool` 的 `name` 要传改写之前的页面原始名**，也就是 relay `webmcp_list_tools` 返回的 `originalName` 字段，不是客户端工具列表里看到的那个名字。
+
+nexus 建议工具名只用 camelCase（见 [`skill/SKILL.md`](https://github.com/alibaba/webmcp-nexus/blob/main/skill/SKILL.md)），这种情况下两者本来就一致。
+
+### 与 relay 的 `webmcp_list_tools` 配合
+
+本 SDK **不提供**配套的列表工具——relay 内置的 `webmcp_list_tools` 已经实时给出全部工具及其 `originalName` / `description` / `inputSchema`。推荐流程：
+
+1. Agent 调 relay 的 `webmcp_list_tools`，拿到实时的 `originalName` 与 `inputSchema`；
+2. 用 `webmcpCallTool({ name: <originalName>, arguments: {...} })` 执行。
+
+即使跳过了第 1 步也能自愈：**未命中或 `name` 为空时，`webmcpCallTool` 返回 `isError` 结果并附上当前页的工具目录**（`name` / `description` / `inputSchema` 三键），Agent 一次调用即可改对名字重试。目录是实时按页取的，路由切走之后旧工具不会残留在里面。
+
+### 什么时候关掉它
+
+默认开启。关掉的理由通常是：不想让 Agent 绕开客户端自己的工具确认流程去调破坏性工具——代调时客户端看到的是 `webmcpCallTool` 自己的 annotations（三个 hint 全 false，即"透明代理，只管执行"），而不是目标工具的。
+
+```ts
+configureBuiltinTools({ callTool: false });
+```
+
+### 其他约束
+
+- `webmcpCallTool` 是**保留名**：你自己的工具若同名会被内置版覆盖（控制台有 `already registered` 告警）。
+- 目录只反映**当前这一个标签页**。多标签页时客户端看到的是带后缀的 `webmcpCallTool_<tabId>`，每个标签页的 dispatcher 与目录彼此独立，relay 负责路由。
+- **代调结果与直调结果一致**：dispatcher 只把宿主 `executeTool` 返回的 JSON 字符串 parse 开，**不做二次归一**，内层工具的返回值原样上交，由消费方（relay 的 `normalizeToolResponse`）用它那层更宽的规则收尾。所以 `isError`、`structuredContent`、以及 `resource_link` / `audio` 等 content 类型都不会被抹平或降级——目标工具失败时 Agent 看到的就是失败。
+- 它只能调**本页**工具，且由页面内的 SDK 提供——不是 relay 的静态工具，别和 `webmcp_list_tools` / `webmcp_list_sources` / `webmcp_open_page` 混为一谈。
+
 ## 浏览器兼容
 
 宿主面已从 `navigator.modelContext` 迁移到规范入口 `document.modelContext`（WebMCP 2026-05-27 草案，Chrome 150 已废弃前者）。SDK 全链路 **document 优先、navigator 兜底**，业务代码无感。
@@ -232,7 +298,7 @@ WebMCP Nexus 是一个 monorepo 工程化方案，下表是发布到 npm 的所�
 
 | 包                                                                                         | 用途                                       |
 | ------------------------------------------------------------------------------------------ | ------------------------------------------ |
-| **`webmcp-nexus-sdk`** （本包）                                                            | 运行时 SDK，提供 3 个核心 API              |
+| **`webmcp-nexus-sdk`** （本包）                                                            | 运行时 SDK，提供 3 个核心注册 API + 内置代调工具      |
 | [`webmcp-nexus-core`](https://www.npmjs.com/package/webmcp-nexus-core)                     | 构建时核心：TS 类型抽取 + JSON Schema 生成 |
 | [`vite-plugin-webmcp-nexus`](https://www.npmjs.com/package/vite-plugin-webmcp-nexus)       | Vite 构建插件                              |
 | [`webpack-plugin-webmcp-nexus`](https://www.npmjs.com/package/webpack-plugin-webmcp-nexus) | Webpack 构建插件                           |

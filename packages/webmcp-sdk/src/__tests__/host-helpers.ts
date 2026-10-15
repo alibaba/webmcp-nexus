@@ -11,6 +11,7 @@
 // - 同引用注入还能顺带验证 getModelContext() 的 document 优先级
 import { vi, type Mock } from 'vitest';
 import { __resetPolyfillStateForTest } from '../polyfill';
+import { configureBuiltinTools } from '../builtinTools';
 import { clearRegistry } from '../registry';
 
 /** 在 document 与 navigator 上同注入同一个假宿主对象 */
@@ -66,12 +67,18 @@ export function uninstallFakeHost(): void {
  * `Document.prototype.modelContext` accessor、navigator 已废弃别名与 testing shim，
  * 并重置 SDK 的 `attempted` 标志 —— 少了它，polyfill 状态会跨用例泄漏。
  *
+ * 内置工具在这里**关掉**而不是复位成生产默认（开）：有用例会在测试中途调 teardownHost
+ * 再装一个假宿主，若此处把开关复位成开，中途之后注册的内置工具会污染该用例后半段的
+ * `getActiveToolNames()` 与 widget 推送断言。测试环境默认值由 setup.ts 与本函数共同
+ * 维持为「关」，需要它的套件在自己的 beforeEach 里显式打开。
+ *
  * `vi.restoreAllMocks()` 必须在这里做：`vi.spyOn(console, 'warn')` 对同一属性重复调用
  * 会返回**同一个** spy，不还原的话告警计数会跨用例累积。
  */
 export function teardownHost(): void {
   uninstallFakeHost();
   __resetPolyfillStateForTest();
+  configureBuiltinTools({ callTool: false });
   clearRegistry();
   vi.restoreAllMocks();
 }

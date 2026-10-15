@@ -2,6 +2,7 @@
 export { registerGlobalTools } from './registerGlobalTools';
 export { useWebMcpTools } from './useWebMcpTools';
 export { withWebMcpTools } from './withWebMcpTools';
+export { configureBuiltinTools } from './builtinTools';
 export type {
   WebMcpToolFn,
   WebMcpToolSchema,
@@ -9,4 +10,5 @@ export type {
   WebMcpToolConfig,
   WebMcpToolAnnotations,
   WebMcpToolExecuteOptions,
+  WebMcpBuiltinToolsOptions,
 } from './types';

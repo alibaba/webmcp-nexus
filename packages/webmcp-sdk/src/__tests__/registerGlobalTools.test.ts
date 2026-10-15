@@ -8,6 +8,7 @@ import {
   unregisterScopedTool,
 } from '../registry';
 import { installFakeHost, makeLegacyHost, makeModernHost, teardownHost } from './host-helpers';
+import { CALL_TOOL_NAME, configureBuiltinTools } from '../builtinTools';
 import { getModelContext, isModernHost } from '../model-context';
 
 function makeToolFn(schemaOverrides?: Record<string, unknown> | false) {
@@ -646,5 +647,106 @@ describe('旧宿主合成规范面（relay 5.x 全档驱动）', () => {
     await expect(mc.executeTool({ name: 'myTool' }, '{}')).rejects.toMatchObject({
       name: 'NotSupportedError',
     });
+  });
+});
+
+describe('registerGlobalTools 与内置工具', () => {
+  let host: ReturnType<typeof makeModernHost>;
+
+  beforeEach(() => {
+    // 先翻开关、再装宿主：configureBuiltinTools 的 enable 分支在宿主可用时会立即补注册，
+    // 那样内置工具就是 beforeEach 注册的了，测不到 registerGlobalTools 自己会不会注册。
+    configureBuiltinTools({ callTool: true });
+    host = makeModernHost();
+    installFakeHost(host);
+  });
+
+  afterEach(() => {
+    teardownHost();
+  });
+
+  function registeredNames(): string[] {
+    return host.registerTool.mock.calls.map(c => c[0].name as string);
+  }
+
+  it('内置工具先于用户工具注册（开关由 beforeEach 打开）', () => {
+    registerGlobalTools({ myTool: makeToolFn() });
+
+    expect(registeredNames()).toEqual([CALL_TOOL_NAME, 'myTool']);
+    expect(getActiveToolNames()).toEqual([CALL_TOOL_NAME, 'myTool']);
+  });
+
+  it('宿主不可用时即使开关是开的也不注册（早退顺序不能挪）', () => {
+    // jsdom 下「无宿主」必须靠 stub navigator 才造得出来：registerGlobalTools 的第一步
+    // ensureModelContextPolyfill() 在没有任何 context 时会**自己装一个 polyfill**，于是
+    // isModelContextAvailable() 恒为真、早退分支不可达 —— 上面那条既有的
+    // 「document/navigator 都没有 modelContext 时静默跳过」用例只能断言旧假宿主的 spy
+    // 没被调用，原因就在这里。stub 掉 navigator 后 ensureModelContextPolyfill 的环境守卫
+    // 早退、polyfill 不安装，早退分支才真正可达。
+    teardownHost();
+    vi.stubGlobal('navigator', undefined);
+    try {
+      configureBuiltinTools({ callTool: true });
+
+      expect(() => registerGlobalTools({ myTool: makeToolFn() })).not.toThrow();
+
+      // ensureBuiltinTools() 必须留在 isModelContextAvailable() 早退**之后**：挪到前面就会
+      // 在无宿主页面往 activeTools 塞一条永远注册不上宿主的幽灵记录
+      expect(getActiveToolNames()).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('不传任何工具也会注册内置工具', () => {
+    registerGlobalTools();
+
+    expect(registeredNames()).toEqual([CALL_TOOL_NAME]);
+  });
+
+  it('configureBuiltinTools({ callTool: false }) 时不注册内置工具', () => {
+    configureBuiltinTools({ callTool: false });
+
+    registerGlobalTools({ myTool: makeToolFn() });
+
+    expect(registeredNames()).toEqual(['myTool']);
+    expect(getActiveToolNames()).toEqual(['myTool']);
+  });
+
+  it('重复调用 registerGlobalTools 不重复注册内置工具', () => {
+    registerGlobalTools({ myTool: makeToolFn() });
+    registerGlobalTools({ otherTool: makeToolFn() });
+
+    expect(registeredNames().filter(n => n === CALL_TOOL_NAME)).toHaveLength(1);
+  });
+
+  it('CALL_TOOL_NAME 是保留名：用户同名工具被内置版覆盖并告警', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    registerGlobalTools({ [CALL_TOOL_NAME]: makeToolFn() });
+
+    // 原生只注册一次，首注册者（内置）的 config 胜出，用户的 'test tool' 描述被忽略
+    const calls = host.registerTool.mock.calls.filter(c => c[0].name === CALL_TOOL_NAME);
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].description).not.toBe('test tool');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('already registered'));
+  });
+
+  it('生产默认值：不做任何 configure，内置工具就注册', async () => {
+    // setup.ts 的全局 beforeEach 关掉的是**已加载模块实例**上的开关，所以本文件其余用例
+    // 都得显式开启 —— 代价是 `let callToolEnabled = true` 这个初值本身没有任何用例观察。
+    // 谁把默认值改坏，全仓测试照样全绿，而客户端快照的逃生口会整体消失（那正是这个功能
+    // 存在的全部理由）。这里用 resetModules + 动态 import 取一套全新实例来锁住初值。
+    // 必须放在本文件最后：resetModules 之后的 import 拿到的都是新实例。
+    vi.resetModules();
+    const fresh = await import('../registerGlobalTools');
+    const freshRegistry = await import('../registry');
+    const freshHost = makeModernHost();
+    installFakeHost(freshHost);
+
+    fresh.registerGlobalTools({ myTool: makeToolFn() });
+
+    expect(freshHost.registerTool.mock.calls.map(c => c[0].name)).toContain(CALL_TOOL_NAME);
+    expect(freshRegistry.getActiveToolNames()).toContain(CALL_TOOL_NAME);
   });
 });

@@ -22,6 +22,7 @@
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [API Overview](#api-overview)
+- [Built-in Tool: webmcpCallTool](#built-in-tool-webmcpcalltool)
 - [Ecosystem](#ecosystem)
 - [Links](#links)
 - [License](#license)
@@ -39,6 +40,7 @@ It exposes only two APIs — `registerGlobalTools` and `useWebMcpTools` — that
 - 🌐 **Cross-browser support** — Chrome 149+ uses the native `document.modelContext` (146–149 are entry-bridged by the polyfill); everywhere else, [`@mcp-b/webmcp-polyfill@5.1.0`](https://www.npmjs.com/package/@mcp-b/webmcp-polyfill) is auto-enabled on first registration (declared as a `dependencies` entry and resolved by your bundler, **not inlined into the published output**), transparent to your code. The SDK installs **non-enumerable** shape-normalization wrappers on the host's `getTools` / `executeTool` to absorb Chrome 155's input-shape change; `Object.keys(document.modelContext)` stays `[]`, preserving the polyfill's "no own enumerable keys" WebIDL fidelity invariant. `registerTool` is never wrapped.
 - 🔁 **HMR-friendly** — change a tool signature during development and its schema re-registers automatically.
 - 🛡️ **Collision-aware** — built-in scope ownership registry: duplicate names produce a warning instead of a crash, and teardown is strictly scoped.
+- 🔧 **Built-in dispatch tool** — `webmcpCallTool` is registered automatically so that clients which ignore `tools/list_changed` can still call tools that appeared mid-session, by name. On a miss it returns the current page's tool directory so the agent can self-correct. See [Built-in Tool](#built-in-tool-webmcpcalltool).
 - 🤝 **First-class desktop agents** — paired with [`@mcp-b/webmcp-local-relay`](https://www.npmjs.com/package/@mcp-b/webmcp-local-relay), local MCP clients can drive your running web app directly.
 
 ## Why Use It
@@ -151,6 +153,69 @@ function MyDialog() {
 ```
 
 > Full API reference and best practices: see the [main repository README](https://github.com/alibaba/webmcp-nexus#readme).
+
+### `configureBuiltinTools(options)`
+
+Toggles the SDK's built-in tools. There is currently one: the global dispatch tool `webmcpCallTool` (enabled by default).
+
+```ts
+import { configureBuiltinTools } from 'webmcp-nexus-sdk';
+
+// Disable the built-in dispatch tool. Order-independent: if it is already
+// registered, it is deregistered on the spot.
+configureBuiltinTools({ callTool: false });
+```
+
+## Built-in Tool: webmcpCallTool
+
+The SDK automatically registers one built-in global tool, `webmcpCallTool`. **You don't write any code for it**: all three entry points — `registerGlobalTools`, `useWebMcpTools`, and `withWebMcpTools` — register it before registering your own tools (idempotent; repeated calls don't re-register).
+
+### What problem it solves
+
+Route-level and component-level tools come and go as pages mount and unmount. Tool list changes are announced via `tools/list_changed`, but that notification is only a **SHOULD** in the spec and clients are allowed to cache the list — **Qoder's session tool index is a startup snapshot and ignores `list_changed` entirely** in our testing. The result: tools that appear after the session started can never be called.
+
+The relay side is accurate in real time; the gap is on the client. Since we can't fix the client, the SDK adds an escape hatch on the **page side**: `webmcpCallTool` is registered at startup, so it is guaranteed to be in the client's snapshot. It takes a tool name, looks the target up live via `document.modelContext.getTools()`, and dispatches to it.
+
+```jsonc
+// Example agent call
+{ "name": "listTodos", "arguments": { "limit": 3 } }
+```
+
+This is the page-side equivalent of the relay's removed `webmcp_call_tool` (dropped in `@mcp-b/webmcp-local-relay` 5.0.0); the input shape and error behaviour match the old tool.
+
+### Prerequisite: it must already be in the client's snapshot
+
+The order has to be: **start the relay → open the page and confirm it connected → then start (or restart) the client session**. If the page is opened after the session started, the escape hatch itself isn't in the snapshot either, and there is nothing to call.
+
+### `name` must be the page-side original name
+
+The relay rewrites tool names: `sanitizeName` replaces `[^a-zA-Z0-9_]` with `_`, and tools published by multiple tabs get a `_<4-char tabId>` suffix. **`webmcpCallTool`'s `name` must be the pre-rewrite page-side name** — the `originalName` field returned by the relay's `webmcp_list_tools`, not the name your MCP client displays.
+
+Nexus recommends camelCase-only tool names (see [`skill/SKILL.md`](https://github.com/alibaba/webmcp-nexus/blob/main/skill/SKILL.md)), in which case the two are identical anyway.
+
+### Pairing with the relay's `webmcp_list_tools`
+
+This SDK deliberately ships **no** companion listing tool — the relay's built-in `webmcp_list_tools` already reports every tool in real time with its `originalName` / `description` / `inputSchema`. Recommended flow:
+
+1. The agent calls the relay's `webmcp_list_tools` to get live `originalName` and `inputSchema` values;
+2. It then runs `webmcpCallTool({ name: <originalName>, arguments: {...} })`.
+
+Skipping step 1 still self-heals: **on a miss, or when `name` is empty, `webmcpCallTool` returns an `isError` result carrying the current page's tool directory** (`name` / `description` / `inputSchema`), so the agent can correct the name in a single round trip. The directory is read live per page — tools from a route you navigated away from don't linger in it.
+
+### When to turn it off
+
+It is on by default. The usual reason to turn it off: you don't want agents bypassing your client's own tool-confirmation flow to reach destructive tools — when dispatching, the client sees `webmcpCallTool`'s own annotations (all three hints false, i.e. "transparent proxy, execution only"), not the target tool's.
+
+```ts
+configureBuiltinTools({ callTool: false });
+```
+
+### Other constraints
+
+- `webmcpCallTool` is a **reserved name**: a tool of yours with the same name is shadowed by the built-in one (with an `already registered` warning in the console).
+- The directory reflects **the current tab only**. With multiple tabs the client sees suffixed `webmcpCallTool_<tabId>` entries; each tab's dispatcher and directory are independent, and the relay handles routing.
+- **Dispatched results are identical to direct calls**: the dispatcher only parses the JSON string returned by the host's `executeTool` and **does not re-normalize** it. The inner tool's value is handed back untouched so the consumer (the relay's `normalizeToolResponse`) finishes the job with its own, wider rules. Therefore `isError`, `structuredContent`, and content types like `resource_link` / `audio` are neither flattened nor downgraded — when the target tool fails, the agent sees a failure.
+- It can only call **this page's** tools and is provided by the in-page SDK — it is not one of the relay's static tools. Don't confuse it with `webmcp_list_tools` / `webmcp_list_sources` / `webmcp_open_page`.
 
 ## Browser Compatibility
 
